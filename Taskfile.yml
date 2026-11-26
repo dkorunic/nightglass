@@ -1,0 +1,166 @@
+version: "3"
+
+tasks:
+  default:
+    desc: Update dependencies and build everything
+    cmds:
+      - task: update
+      - task: build
+
+  update:
+    desc: Update all Go dependencies to latest and tidy go.mod
+    cmds:
+      - go get -u ./...
+      - go mod tidy
+
+  update-major:
+    desc: List available major-version dependency upgrades
+    cmds:
+      - gomajor list
+
+  update-tools:
+    desc: Install the formatting tools (gci, gofumpt, betteralign)
+    cmds:
+      - go install github.com/daixiang0/gci@latest
+      - go install mvdan.cc/gofumpt@latest
+      - go install github.com/dkorunic/betteralign/cmd/betteralign@latest
+
+  fmt:
+    desc: Tidy modules and run gci, gofumpt and betteralign formatters
+    deps: [tools]
+    cmds:
+      - go mod tidy
+      - gci write .
+      - gofumpt -l -w .
+      - go fix ./...
+      - betteralign -apply ./...
+
+  modernize:
+    desc: Apply gopls modernize fixes across the codebase
+    cmds:
+      - go run golang.org/x/tools/gopls/internal/analysis/modernize/cmd/modernize@latest -fix -test ./...
+
+  lists:
+    desc: Regenerate the embedded target lists (catalog/targets/*.gob) from their YAML
+    # Skipped while neither the YAML nor the catalog code changed (checksums
+    # in .task/); the output is deterministic either way.
+    sources:
+      - catalog/targets/*.yaml
+      - catalog/*.go
+    generates:
+      - catalog/targets/*.gob
+    cmds:
+      - go test -count=1 -run '^TestEmbeddedLists$' ./catalog -args -update
+
+  icons:
+    desc: Re-render app/build/icon.svg into icon.png/.ico/.icns
+    cmds:
+      - sh scripts/icons.sh
+
+  build:
+    desc: Format, then build the GUI (dist/nightglass) and the CLI tools (dist/originctl, dist/origin-fake)
+    cmds:
+      - task: fmt
+      - task: lists
+      - task: build-cli
+      # Wails needs cgo (WebKit/GTK on Linux, AppKit on macOS).
+      - CGO_ENABLED=1 go build -trimpath -ldflags="-s -w" -o dist/nightglass ./app
+
+  build-cli:
+    desc: Build the static CLI tools (originctl, origin-fake) into dist/
+    env:
+      CGO_ENABLED: 0
+    cmds:
+      - go build -trimpath -ldflags="-s -w -extldflags '-static'" -o dist/ ./cmd/...
+
+  build-server:
+    desc: Build the headless server-mode GUI (dist/app-server) used by smoke and e2e
+    env:
+      CGO_ENABLED: 0
+    cmds:
+      - go build -tags server -o dist/app-server ./app
+
+  build-debug:
+    desc: Build the race-enabled debug GUI (slower)
+    env:
+      CGO_ENABLED: 1
+    cmds:
+      - task: fmt
+      - go build -race -o dist/nightglass ./app
+
+  run-fake:
+    desc: Run the simulated Origin at 127.0.0.1:8080 for GUI work
+    cmds:
+      - go run ./cmd/origin-fake {{.CLI_ARGS}}
+
+  lint:
+    desc: Format then run golangci-lint (5m timeout)
+    cmds:
+      - task: fmt
+      - golangci-lint run --timeout 5m
+
+  lint-nil:
+    desc: Format then run the nilaway nil-safety pass
+    cmds:
+      - task: fmt
+      - nilaway ./...
+
+  test:
+    desc: Run the Go tests (race) and the frontend unit tests
+    env:
+      CGO_ENABLED: 1
+    cmds:
+      - go test -race ./...
+      - node --test app/frontend/targets.test.mjs
+
+  flake:
+    desc: Repeat the app/control tests to catch timing flakes (task flake -- -count=50)
+    env:
+      CGO_ENABLED: 1
+    cmds:
+      - go test -race {{.CLI_ARGS | default "-count=10"}} ./app/control
+
+  smoke:
+    desc: GUI in Wails server mode against origin-fake (bindings, routes, assets)
+    cmds:
+      - sh scripts/smoke.sh
+
+  e2e:
+    desc: GUI tests in headless Chrome against origin-fake (CHROME=path if needed)
+    cmds:
+      - sh scripts/e2e.sh
+
+  check:
+    desc: Everything CI runs
+    cmds:
+      - task: test
+      - task: smoke
+      - task: e2e
+
+  tools:
+    desc: Install the formatting tools (gci, gofumpt, betteralign) if missing
+    cmds:
+      - task: gofumpt
+      - task: gci
+      - task: betteralign
+
+  gci:
+    internal: true
+    status:
+      - which gci
+    cmds:
+      - go install github.com/daixiang0/gci@latest
+
+  gofumpt:
+    internal: true
+    status:
+      - which gofumpt
+    cmds:
+      - go install mvdan.cc/gofumpt@latest
+
+  betteralign:
+    internal: true
+    status:
+      - which betteralign
+    cmds:
+      - go install github.com/dkorunic/betteralign/cmd/betteralign@latest

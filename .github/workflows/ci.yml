@@ -1,0 +1,52 @@
+# SPDX-FileCopyrightText: 2026 Dinko Korunic <dinko.korunic@gmail.com>
+# SPDX-License-Identifier: MIT
+
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: sudo apt-get update && sudo apt-get install -y libgtk-4-dev libwebkitgtk-6.0-dev
+      - run: test -z "$(gofmt -l .)"
+      - run: go vet ./...
+      # Includes TestEmbeddedLists: fails when catalog/targets/*.gob is stale.
+      - run: go test -race ./...
+      - run: node --test app/frontend/targets.test.mjs
+      - run: sh scripts/smoke.sh
+      # GUI tests in headless Chrome (preinstalled on GitHub's Ubuntu runners).
+      - run: sh scripts/e2e.sh
+
+  build:
+    needs: test
+    strategy:
+      matrix:
+        os: [ubuntu-24.04, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libgtk-4-dev libwebkitgtk-6.0-dev
+      - run: go build -o dist/ ./cmd/...
+      - if: runner.os != 'Windows'
+        run: go build -o dist/nightglass ./app
+      - if: runner.os == 'Windows'
+        run: go build -ldflags -H=windowsgui -o dist/nightglass.exe ./app
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nightglass-${{ matrix.os }}
+          path: dist/

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- SPDX-FileCopyrightText: 2026 Dinko Korunic <dinko.korunic@gmail.com> -->
+<!-- SPDX-License-Identifier: MIT -->
+<plist version="1.0">
+<dict>
+  <key>CFBundleName</key><string>Nightglass</string>
+  <key>CFBundleDisplayName</key><string>Nightglass</string>
+  <key>CFBundleIdentifier</key><string>com.github.dkorunic.nightglass</string>
+  <key>CFBundleExecutable</key><string>nightglass</string>
+  <key>CFBundleIconFile</key><string>icon</string>
+  <key>CFBundlePackageType</key><string>APPL</string>
+  <key>CFBundleVersion</key><string>VERSION</string>
+  <key>CFBundleShortVersionString</key><string>VERSION</string>
+  <key>LSMinimumSystemVersion</key><string>11.0</string>
+  <key>NSHighResolutionCapable</key><true/>
+  <!-- The telescope is on the local network (discovery and its Wi-Fi). -->
+  <key>NSLocalNetworkUsageDescription</key><string>Nightglass finds and controls your Origin telescope on the local network.</string>
+</dict>
+</plist>

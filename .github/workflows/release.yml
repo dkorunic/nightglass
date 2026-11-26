@@ -1,0 +1,119 @@
+# SPDX-FileCopyrightText: 2026 Dinko Korunic <dinko.korunic@gmail.com>
+# SPDX-License-Identifier: MIT
+
+# Release builds: push a tag v1.2.3 to build Nightglass (with originctl and
+# origin-fake) for macOS, Linux and Windows and attach them to a GitHub
+# release. macOS builds are signed and notarised when these secrets exist,
+# else they are left unsigned (Gatekeeper then asks to confirm the first
+# start):
+#   MACOS_CERT_P12      base64 of a "Developer ID Application" certificate (.p12)
+#   MACOS_CERT_PASSWORD its password
+#   APPLE_ID, APPLE_TEAM_ID, APPLE_APP_PASSWORD   for notarytool
+
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+# Read-only by default; only the release job may write (to the release).
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - { os: macos-latest, name: macos-arm64 }
+          - { os: macos-13, name: macos-amd64 }
+          - { os: ubuntu-24.04, name: linux-amd64 }
+          - { os: windows-latest, name: windows-amd64 }
+    runs-on: ${{ matrix.os }}
+    env:
+      VERSION: ${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libgtk-4-dev libwebkitgtk-6.0-dev
+      - name: CLI tools
+        shell: bash
+        run: |
+          mkdir -p out
+          go build -trimpath -o out/ ./cmd/...
+
+      - name: macOS app bundle
+        if: runner.os == 'macOS'
+        env:
+          MACOS_CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
+          MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: |
+          app=out/Nightglass.app
+          mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
+          go build -trimpath -o "$app/Contents/MacOS/nightglass" ./app
+          sed "s/VERSION/${VERSION#v}/g" app/build/darwin/Info.plist > "$app/Contents/Info.plist"
+          cp app/build/icon.icns "$app/Contents/Resources/icon.icns"
+          if [ -n "$MACOS_CERT_P12" ]; then
+            kc="$RUNNER_TEMP/sign.keychain-db"
+            security create-keychain -p ci "$kc"
+            security set-keychain-settings "$kc"
+            security unlock-keychain -p ci "$kc"
+            echo "$MACOS_CERT_P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+            security import "$RUNNER_TEMP/cert.p12" -k "$kc" -P "$MACOS_CERT_PASSWORD" -T /usr/bin/codesign
+            security set-key-partition-list -S apple-tool:,apple: -s -k ci "$kc"
+            security list-keychains -d user -s "$kc"
+            id=$(security find-identity -v -p codesigning "$kc" | awk -F'"' '/Developer ID Application/ {print $2; exit}')
+            for f in out/originctl out/origin-fake "$app"; do
+              codesign --force --options runtime --timestamp --sign "$id" "$f"
+            done
+            ditto -c -k --keepParent "$app" "$RUNNER_TEMP/notarize.zip"
+            xcrun notarytool submit "$RUNNER_TEMP/notarize.zip" --apple-id "$APPLE_ID" \
+              --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD" --wait
+            xcrun stapler staple "$app"
+          fi
+          cd out && ditto -c -k --keepParent Nightglass.app "../nightglass-$VERSION-${{ matrix.name }}.zip"
+          zip "../nightglass-$VERSION-${{ matrix.name }}.zip" originctl origin-fake
+
+      - name: Linux archive
+        if: runner.os == 'Linux'
+        run: |
+          go build -trimpath -o out/nightglass ./app
+          cp app/build/linux/nightglass.desktop out/
+          cp app/build/icon.png out/nightglass.png
+          tar -C out -czf "nightglass-$VERSION-${{ matrix.name }}.tar.gz" .
+
+      - name: Windows archive
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          # The icon and version as a Windows resource, picked up by go build.
+          (cd app && go run github.com/tc-hib/go-winres@v0.3.3 simply --icon build/icon.png --manifest gui \
+            --product-name Nightglass --product-version "${VERSION#v}" --file-version "${VERSION#v}")
+          go build -trimpath -ldflags -H=windowsgui -o out/nightglass.exe ./app
+          cd out && 7z a "../nightglass-$VERSION-${{ matrix.name }}.zip" nightglass.exe originctl.exe origin-fake.exe
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}
+          path: nightglass-*
+
+  release:
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+      # Third-party, so pinned to a commit (v2.6.2).
+      - uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65
+        with:
+          files: nightglass-*
+          generate_release_notes: true

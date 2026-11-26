@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<!-- SPDX-FileCopyrightText: 2026 Dinko Korunic <dinko.korunic@gmail.com> -->
+<!-- SPDX-License-Identifier: MIT -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Nightglass</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <h1>Nightglass</h1>
+    <span id="conn" class="badge off">Not connected</span>
+    <span class="grow"></span>
+    <button id="open-connect">Connect…</button>
+    <button id="open-settings">Settings</button>
+    <button id="open-origin">Origin</button>
+    <button id="open-files" class="needs-conn">Files</button>
+    <button id="open-gallery">Gallery</button>
+    <button id="open-mosaics">Mosaics</button>
+    <button id="open-tonight">Tonight</button>
+    <button id="open-about">About</button>
+    <button id="night-toggle" title="Night mode (N)">Night</button>
+  </header>
+  <div id="banner" hidden>Connection lost — reconnecting…</div>
+
+  <main>
+    <section id="viewer">
+      <nav class="tabs">
+        <p id="activity">No Connection</p>
+        <span id="target-name" hidden></span>
+        <span id="manual-mode" hidden></span>
+        <span id="warning" hidden></span>
+        <span class="grow"></span>
+        <button id="filter" class="needs-conn">Clear Filter</button>
+        <button id="reframe" class="needs-conn">Reframe</button>
+        <button id="center-here" hidden>Center Here</button>
+        <button id="snapshot-save" hidden>Save</button>
+        <button id="snapshot-delete" hidden>Delete</button>
+        <button id="save-shown" disabled>Save frame</button>
+        <button id="save-final" disabled>Save final image again</button>
+      </nav>
+      <progress id="progress" max="1" hidden></progress>
+      <div class="frame-box">
+        <img id="frame" alt="">
+        <div id="crosshair" hidden></div>
+        <p id="frame-empty">No image yet</p>
+        <!-- The app's progress box over the final image (updateFinalMasterHUDPhase). -->
+        <p id="final-box" hidden></p>
+      </div>
+      <p id="frame-info"></p>
+      <div class="row">
+        <label><span id="strength-label">Strength (0.50)</span>
+          <input id="stretch-strength" type="range" disabled min="0" max="100" value="50"></label>
+        <label><span id="background-label">Background (0.50)</span>
+          <input id="stretch-background" type="range" disabled min="0" max="100" value="50"></label>
+      </div>
+    </section>
+
+    <aside id="side">
+      <h2>Status</h2>
+      <dl id="status">
+        <dt>Task</dt><dd id="st-task">-</dd>
+        <dt>Alignment</dt><dd id="st-aligned">-</dd>
+        <dt>RA (J2000)</dt><dd id="st-ra">-</dd>
+        <dt>Dec. (J2000)</dt><dd id="st-dec">-</dd>
+        <dt>Altitude</dt><dd id="st-alt">-</dd>
+        <dt>Azimuth</dt><dd id="st-az">-</dd>
+        <dt>Battery</dt><dd id="st-battery">-</dd>
+        <dt>Charger</dt><dd id="st-charger">-</dd>
+        <dt>Focuser Position</dt><dd id="st-focus">-</dd>
+        <dt>Camera</dt><dd id="st-camera">-</dd>
+        <dt>Weather</dt><dd id="st-env">-</dd>
+        <dt>Dew heater</dt><dd id="st-dew">-</dd>
+        <dt>Free Disk Space</dt><dd id="st-disk">-</dd>
+        <dt>Autoguider</dt><dd id="st-guider">-</dd>
+      </dl>
+      <details id="more-status">
+        <summary>More status</summary>
+        <dl id="status-more">
+          <dt>Latitude</dt><dd id="st-lat">-</dd>
+          <dt>Longitude</dt><dd id="st-lon">-</dd>
+          <dt>Date</dt><dd id="st-date">-</dd>
+          <dt>Time</dt><dd id="st-time">-</dd>
+          <dt>Timezone</dt><dd id="st-tz">-</dd>
+          <dt>Encoder Azimuth</dt><dd id="st-enc-az">-</dd>
+          <dt>Encoder Altitude</dt><dd id="st-enc-alt">-</dd>
+          <dt>Address</dt><dd id="st-host">-</dd>
+          <dt>Download</dt><dd id="st-speed">-</dd>
+        </dl>
+      </details>
+
+      <h2>Telescope</h2>
+      <div class="row">
+        <button id="initialize" hidden></button>
+      </div>
+      <div class="row">
+        <button id="halt" class="needs-conn">Halt all tasks</button>
+      </div>
+
+      <h2>Slew <small>(arrow keys)</small></h2>
+      <div class="pad">
+        <span></span><button class="needs-conn" data-alt="1" data-azm="0">▲</button><span></span>
+        <button class="needs-conn" data-alt="0" data-azm="-1">◀</button>
+        <button class="needs-conn" id="slew-stop">■</button>
+        <button class="needs-conn" data-alt="0" data-azm="1">▶</button>
+        <span></span><button class="needs-conn" data-alt="-1" data-azm="0">▼</button><span></span>
+      </div>
+      <label>Rate:
+        <select id="rate"><option>1</option><option>2</option><option selected>3</option><option>4</option></select>
+      </label>
+
+      <h2>Focus</h2>
+      <p><span id="focus-label">Focuser Position</span>:
+        <button id="focus-value" class="needs-conn focus-ctl" title="Set the focuser position">–</button></p>
+      <div class="row">
+        <button class="needs-conn focus-ctl" data-step="-2">−100</button>
+        <button class="needs-conn focus-ctl" data-step="-1">−10</button>
+        <button class="needs-conn focus-ctl" data-step="-3" title="One step (- key; Shift: rough)">−1</button>
+        <button class="needs-conn focus-ctl" data-step="3" title="One step (+ key; Shift: rough)">+1</button>
+        <button class="needs-conn focus-ctl" data-step="1">+10</button>
+        <button class="needs-conn focus-ctl" data-step="2">+100</button>
+        <button class="needs-conn focus-ctl" id="autofocus">Auto</button>
+      </div>
+    </aside>
+
+    <section id="targets">
+      <div class="row">
+        <select id="catalog"></select>
+        <input id="search" type="search" placeholder="Search name, NGC/IC, common name, type">
+        <label><input type="checkbox" id="above"> Above horizon only</label>
+        <span id="count" class="grow"></span>
+      </div>
+      <div class="row">
+        <span id="selected">No target selected</span>
+        <span class="grow"></span>
+        <input id="ra" placeholder="RA h m s" size="12">
+        <input id="dec" placeholder="Dec ° ′ ″" size="12">
+        <button id="goto" class="needs-conn" disabled>Go to</button>
+        <button id="image" class="needs-conn" disabled>Image</button>
+        <button id="mosaic" class="needs-conn" disabled title="Image a larger area as tiles, composed on the Origin">Mosaic…</button>
+        <label title="The Origin ends the run itself after this long; empty: until Finish">Stop after
+          <input id="duration" type="number" min="0" step="1" size="4" placeholder="–"> min</label>
+        <button id="finish-imaging" class="needs-conn" disabled>Finish imaging</button>
+        <button id="cancel-imaging" class="needs-conn" disabled>Cancel imaging</button>
+      </div>
+      <div class="thead">
+        <span data-sort="Name">Name</span><span data-sort="Description">Description</span>
+        <span data-sort="Type">Type</span><span data-sort="Mag">Mag</span><span data-sort="Size">Size ′</span>
+        <span data-sort="Constellation">Constellation</span><span data-sort="alt">Alt °</span><span data-sort="az">Az °</span>
+      </div>
+      <div id="rows"><div id="spacer"><div id="window"></div></div></div>
+    </section>
+  </main>
+
+  <dialog id="connect-dialog">
+    <h2>Connect to an Origin</h2>
+    <p><button id="discover">Search network</button> <span id="discover-state"></span></p>
+    <ul id="found"></ul>
+    <p><input id="host" placeholder="IP address, e.g. 192.168.1.10" size="28"></p>
+    <p><button id="connect">Connect</button> <button id="disconnect">Disconnect</button>
+       <button class="close">Close</button></p>
+  </dialog>
+
+  <dialog id="settings-dialog">
+    <h2>Settings</h2>
+    <form method="dialog" id="settings-form">
+      <label>Latitude ° (north +)<input name="LatDeg" type="number" step="any" min="-90" max="90" required></label>
+      <label>Longitude ° (east +)<input name="LonDeg" type="number" step="any" min="-180" max="180" required></label>
+      <label>Time zone<input name="TimeZone" list="zones" required></label>
+      <datalist id="zones"></datalist>
+      <label>Lowest go-to altitude °<input name="SlewLimitMinDeg" type="number" step="1" min="0" max="89"></label>
+      <fieldset>
+        <legend>Camera</legend>
+        <label class="check"><input name="ManualImaging" type="checkbox"> Manual exposure and ISO (else the Origin chooses)</label>
+        <label class="check"><input name="Snapshot" type="checkbox"> Snapshot mode (manual live view)</label>
+        <label>Exposure s<input name="ExposureSec" type="number" step="any" min="0"></label>
+        <label>Snapshot exposure s<input name="SnapshotExposureSec" type="number" step="any" min="0"></label>
+        <label>ISO<select name="ISO"></select></label>
+      </fieldset>
+      <fieldset>
+        <legend>Imaging</legend>
+        <label class="check"><input name="SaveRaw" type="checkbox"> Save Raw Images</label>
+        <label class="check"><input name="StopOnPlateSolveFail" type="checkbox"> Stop imaging if plate solve fails</label>
+        <label class="check"><input name="Dither" type="checkbox"> Dithering</label>
+        <label>Dither Amount (pixels)<input name="DitherDistance" type="range" min="1" max="30"> <span data-val="DitherDistance"></span></label>
+        <label>Dither Frequency (frames)<input name="DitherInterval" type="range" min="1" max="10"> <span data-val="DitherInterval"></span></label>
+      </fieldset>
+      <fieldset>
+        <legend>Display</legend>
+        <label>Night Vision Brightness<input name="NightBrightness" type="range" min="20" max="100"> <span data-val="NightBrightness" data-pct></span></label>
+        <label class="check"><input name="KeepScreenOn" type="checkbox"> Keep the screen on while Nightglass is open</label>
+        <label class="check"><input name="Announcements" type="checkbox"> Show Origin announcements (from news.skysafariastronomy.com)</label>
+        <label>Time<select name="TimeFormat">
+          <option value="24hs">24-hour with seconds</option><option value="24h">24-hour</option>
+          <option value="12hs">12-hour with seconds</option><option value="12h">12-hour</option></select></label>
+        <label>Date<select name="DateOrder">
+          <option value="YMD">Year Month Day</option><option value="DMY">Day Month Year</option><option value="MDY">Month Day Year</option>
+          <option value="YDM">Year Day Month</option><option value="DYM">Day Year Month</option><option value="MYD">Month Year Day</option></select></label>
+        <label>Coordinates<select name="CoordFormat">
+          <option value="dms">Degrees, minutes, seconds</option><option value="dm">Degrees, decimal minutes</option><option value="deg">Decimal degrees</option></select></label>
+      </fieldset>
+      <label>Save folder<input name="SaveDir"></label>
+      <p><button value="save">Save</button> <button value="cancel" formnovalidate>Cancel</button></p>
+    </form>
+  </dialog>
+
+  <dialog id="critical-dialog">
+    <h2>Origin has encountered a critical error!</h2>
+    <p>Please power cycle your Origin.</p>
+    <p><button id="critical-email">Email Report</button> <button class="close">Close</button></p>
+  </dialog>
+
+  <dialog id="orphans-dialog">
+    <h2 id="orphans-title"></h2>
+    <p id="orphans-text"></p>
+    <p><button id="orphans-download">Download Now</button> <button id="orphans-forget"></button>
+       <button class="close">Cancel</button></p>
+  </dialog>
+
+  <dialog id="nebula-dialog">
+    <h2>Nebula Filter Settings Enabled</h2>
+    <p>Does your Origin have the nebula filter installed?</p>
+    <p><button class="close">Yes, Nebula Filter Is Installed</button>
+       <button id="nebula-no">No (Disabled Nebula Filter Settings)</button></p>
+  </dialog>
+
+  <dialog id="confirm-dialog">
+    <h2 id="confirm-title"></h2>
+    <p id="confirm-text"></p>
+    <p><button id="confirm-ok"></button> <button id="confirm-cancel"></button></p>
+  </dialog>
+
+  <dialog id="focus-dialog">
+    <h2>Manually Set Focuser?</h2>
+    <p id="focus-dialog-text"></p>
+    <p><input id="focus-input" type="number" step="1" placeholder="Focus Value"></p>
+    <p><button id="focus-set">OK</button> <button class="close">Cancel</button></p>
+  </dialog>
+
+  <dialog id="files-dialog">
+    <h2>Origin Telescope File Manager</h2>
+    <p>Below you will find a listing of image directories found on your Origin Telescope.</p>
+    <p>Status: <span id="files-status"></span> · Free Disk Space: <span id="files-free"></span>
+      <button id="files-refresh">Refresh</button></p>
+    <ul id="files-list"></ul>
+    <p><button id="files-copy-all">Copy All To USB</button> <button id="files-delete-all">Delete All Image Directories</button>
+      <button class="close">Close</button></p>
+  </dialog>
+
+  <dialog id="origin-dialog">
+    <h2>Origin Settings</h2>
+    <form id="origin-form" onsubmit="return false">
+      <fieldset><legend>Mount</legend>
+        <label class="check"><input name="wedge" type="checkbox"> Using Equatorial Wedge</label>
+        <button id="reinit" type="button">Re-Initialize Telescope Now</button>
+        <button id="polar-align" type="button">Polar Align Telescope Now</button>
+        <button id="reboot" type="button">Reboot</button>
+        <button id="power-off" type="button">Power Off</button>
+      </fieldset>
+      <fieldset><legend>Lighting</legend>
+        <label>LED Ring<input name="ledring" type="range" min="0" max="100"> <span data-val="ledring" data-pct></span></label>
+        <label>Mount LED<input name="mountled" type="range" min="0" max="100"> <span data-val="mountled" data-pct></span></label>
+      </fieldset>
+      <fieldset><legend>Fans</legend>
+        <label class="check"><input name="otafan" type="checkbox"> Telescope Fan</label>
+        <label class="check"><input name="cpufan" type="checkbox"> CPU Fan</label>
+      </fieldset>
+      <fieldset><legend>Autofocus</legend>
+        <label class="check"><input name="tempaf" type="checkbox"> On Temperature Change</label>
+        <label>Change After <span id="threshold-label"></span><input name="threshold" type="range" min="1" max="10"></label>
+        <label class="check"><input name="gotoaf" type="checkbox"> After Goto Any Object</label>
+      </fieldset>
+      <fieldset><legend>Dew Heater</legend>
+        <label class="check"><input name="dewmode" type="radio" value="Auto"> Auto</label>
+        <label class="check"><input name="dewmode" type="radio" value="Manual"> Manual</label>
+        <label>Aggressiveness<input name="aggression" type="range" min="1" max="10"> <span data-val="aggression"></span></label>
+        <label>Power<input name="dewpower" type="range" min="0" max="100"> <span data-val="dewpower" data-pct></span></label>
+      </fieldset>
+      <fieldset><legend>Camera And Imaging</legend>
+        <label class="check"><input name="giotto" type="checkbox"> GIOTTO Flat Generator</label>
+        <label>Giotto Brightness<input name="giottolevel" type="range" min="1" max="100"> <span data-val="giottolevel"></span></label>
+        <button id="capture-flats" type="button">Capture Flat Frames</button>
+        <button id="restore-darks" type="button">Restore Factory Darks</button>
+        <button id="restore-flats" type="button">Restore Factory Flats</button>
+        <label>Dark Frame ISO<select name="darkiso"></select></label>
+        <label>Dark Frame Exposure (s)<input name="darkexp" type="number" step="any" min="0"></label>
+        <label>Number Of Exposures<input name="darkcount" type="number" step="1" min="1" max="100"></label>
+        <button id="capture-darks" type="button">Capture Dark Frames</button>
+        <button id="recapture-darks" type="button">Recapture Complete Set of Dark Frames</button>
+      </fieldset>
+      <fieldset><legend>Environment</legend>
+        <button id="recalibrate" type="button">Recalibrate Environment Sensor</button>
+      </fieldset>
+      <fieldset><legend>Images</legend>
+        <label class="check"><input name="postprocess" type="checkbox"> AI Post Process</label>
+        <label class="check"><input name="autocrop" type="checkbox"> Auto-Crop Images</label>
+      </fieldset>
+      <fieldset><legend>Mosaics</legend>
+        <label class="check"><input name="mosaicflatten" type="checkbox"> Flatten Backgrounds</label>
+        <label class="check"><input name="mosaicnormalize" type="checkbox"> Normalize Backgrounds</label>
+        <label class="check"><input name="mosaicequalize" type="checkbox"> Equalize Noise</label>
+      </fieldset>
+      <fieldset><legend>Logging</legend>
+        <button id="download-logs" type="button">Download Origin Logs</button>
+        <button id="save-app-log" type="button">Save Nightglass Log</button>
+      </fieldset>
+      <fieldset><legend>Version &amp; Updates</legend>
+        <dl class="info">
+          <dt>Model</dt><dd id="info-model"></dd>
+          <dt>Current Version</dt><dd id="info-version"></dd>
+          <dt>Serial Number</dt><dd id="info-serial"></dd>
+          <dt>Update Channel</dt><dd id="info-channel"></dd>
+          <dt>Update Status</dt><dd id="info-update"></dd>
+          <dt>Release Notes</dt><dd><button id="release-notes" type="button">[Show Notes...]</button></dd>
+          <dt>Mobile App</dt><dd id="info-app"></dd>
+        </dl>
+        <!-- The app's pull to refresh (updateSoftwareUpdateInfoFromScope). -->
+        <button id="check-updates" type="button">Check Again</button>
+        <label class="check"><input name="autoupdates" type="checkbox"> Update Automatically</label>
+        <label>Core Software Channel<select name="channel"></select></label>
+        <button id="update-origin" type="button" disabled>No Updates Available</button>
+      </fieldset>
+      <fieldset><legend>Experimental</legend>
+        <button id="demo-mode" type="button">Demo Mode Initialize</button>
+      </fieldset>
+      <p><button class="close" type="button">Close</button></p>
+    </form>
+  </dialog>
+
+  <dialog id="polar-rec-dialog">
+    <h2>Polar Alignment Recommended</h2>
+    <p>Your Origin is configured for use with an equatorial mount. If it is on an EQ mount, you may want to run a polar alignment now. If it is not, you should disable that setting.</p>
+    <p><button id="polar-rec-run">Run Polar Alignment</button> <button class="close">Don't Polar Align</button>
+      <button id="polar-rec-noeq">Not On An Equatorial Mount</button></p>
+  </dialog>
+
+  <dialog id="polar-dialog">
+    <h2>Polar Align Your Origin</h2>
+    <p>Adjust the latitude and azimuth knobs on your mount until the errors are acceptable to you.</p>
+    <!-- The errors drawn as offset from the centre, rings at 1°, 2° and 3°. -->
+    <svg id="polar-chart" viewBox="-100 -100 200 200" width="320" height="320" role="img" aria-label="Polar alignment error">
+      <g class="ref">
+        <circle r="30"/><circle r="60"/><circle r="90"/>
+        <line x1="-95" x2="95"/><line y1="-95" y2="95"/>
+      </g>
+      <g class="lbl"><text x="33" y="-3">1°</text><text x="63" y="-3">2°</text><text x="93" y="-3">3°</text></g>
+      <g id="polar-mark" hidden><circle r="9"/><line x1="-13" x2="13"/><line y1="-13" y2="13"/></g>
+    </svg>
+    <p id="polar-errors">Az. Err.: -, Alt. Err: -</p>
+    <p><button id="polar-end">End Polar Alignment</button></p>
+  </dialog>
+
+  <dialog id="alert-dialog">
+    <h2 id="alert-title"></h2>
+    <p id="alert-text"></p>
+    <p><button class="close">OK</button></p>
+  </dialog>
+
+  <dialog id="about-dialog">
+    <pre id="about-text"></pre>
+    <p><button id="about-quickstart">Quick Start</button> <button class="close">Close</button></p>
+  </dialog>
+
+  <dialog id="mosaic-dialog">
+    <h2 id="mosaic-title">Mosaic</h2>
+    <form id="mosaic-form" onsubmit="return false">
+      <fieldset><legend>Start Time</legend>
+        <label class="check"><input type="radio" name="start" value="auto" checked> Automatic</label>
+        <label class="check"><input type="radio" name="start" value="manual"> Manual <input name="startat" type="datetime-local"></label>
+      </fieldset>
+      <fieldset><legend>Per-Tile Duration</legend>
+        <label class="check"><input type="radio" name="duration" value="auto" checked> Automatic (<span id="mosaic-auto-duration"></span>)</label>
+        <label class="check"><input type="radio" name="duration" value="custom"> Per-Tile Duration (HH:MM)
+          <input name="durh" type="number" min="0" max="23" size="3"> : <input name="durm" type="number" min="0" max="59" size="3"></label>
+      </fieldset>
+      <fieldset><legend>Camera</legend>
+        <label class="check"><input type="radio" name="camera" value="auto" checked> Automatic</label>
+        <label class="check"><input type="radio" name="camera" value="manual"> Manual</label>
+        <label>Sub-Exposure (s)<select name="exp"></select></label>
+        <label>ISO<select name="iso"></select></label>
+      </fieldset>
+      <fieldset><legend>Area</legend>
+        <label><span id="mosaic-width-label">Width</span><input name="width" type="number" min="1" step="any"></label>
+        <label><span id="mosaic-height-label">Height</span><input name="height" type="number" min="1" step="any"></label>
+        <label><span id="mosaic-rotation-label">Rotation: 0°</span><input name="rotation" type="range" min="0" max="360" step="1"></label>
+        <p id="mosaic-grid"></p>
+      </fieldset>
+      <label class="check"><input name="powerdown" type="checkbox"> Power Down On Completion</label>
+      <label class="check"><input name="autofocus" type="checkbox"> Autofocus After Each Tile</label>
+      <p><button id="mosaic-begin" type="button">Begin Mosaic Capture</button> <button class="close" type="button">Cancel</button></p>
+    </form>
+  </dialog>
+
+  <dialog id="mosaics-dialog">
+    <h2>Mosaic Capture Sets</h2>
+    <ul id="mosaics-list"></ul>
+    <p id="mosaics-empty" hidden>No Mosaics</p>
+    <p><button class="close">Close</button></p>
+  </dialog>
+
+  <dialog id="mosaic-capture-dialog">
+    <h2 id="mc-title">Mosaic Capture</h2>
+    <img id="mc-preview" alt="Composed mosaic" hidden>
+    <div id="mc-tiles"></div>
+    <p><button id="mc-action" hidden></button> <button id="mc-compose">Compose Mosaic</button><span id="mc-spinner" class="spinner" hidden></span> <button class="close">Close</button></p>
+  </dialog>
+
+  <dialog id="choice-dialog">
+    <h2 id="choice-title"></h2>
+    <p id="choice-text"></p>
+    <p id="choice-buttons"></p>
+  </dialog>
+
+  <dialog id="quickstart-dialog">
+    <h2 id="qs-title"></h2>
+    <p id="qs-text"></p>
+    <p><span id="qs-page"></span></p>
+    <p><button id="qs-back">Back</button> <button id="qs-next">Next</button> <button class="close">Done</button></p>
+  </dialog>
+
+  <dialog id="gallery-dialog">
+    <h2>Image Gallery</h2>
+    <nav class="tabs">
+      <button id="gallery-all" class="tab on">All</button>
+      <button id="gallery-favorites" class="tab">Favorites</button>
+      <button id="gallery-recent" class="tab">Recent</button>
+      <span class="grow"></span>
+      <span id="gallery-count"></span>
+      <button id="gallery-select">Select</button>
+      <button id="gallery-share-sel" hidden>Share</button>
+      <button id="gallery-delete-sel" hidden>Delete</button>
+    </nav>
+    <div id="gallery-grid"></div>
+    <p id="gallery-empty" hidden>No images saved yet.</p>
+    <p><button class="close">Close</button></p>
+  </dialog>
+
+  <dialog id="share-dialog">
+    <h2>Share Image</h2>
+    <form id="share-form" method="dialog">
+      <!-- The app's items, all shown at first (showAllShareItems); its NAME is a cloud screen name (out of scope). -->
+      <label class="check"><input name="exposure" type="checkbox" checked> EXPOSURE</label>
+      <label class="check"><input name="date" type="checkbox" checked> DATE</label>
+      <label class="check"><input name="details" type="checkbox" checked> Object</label>
+      <label class="check"><input name="logo" type="checkbox" checked> LOGO</label>
+      <p><button id="share-go" type="button">Share</button> <button class="close" type="button">Cancel</button></p>
+    </form>
+  </dialog>
+
+  <dialog id="view-dialog">
+    <img id="view-img" alt="">
+    <dl id="view-info" class="info"></dl>
+    <!-- The app's image screen actions (ImageDetailFragment). -->
+    <p id="view-btns"></p>
+    <p><button class="close">Close</button></p>
+  </dialog>
+
+  <!-- The app's Tonight → Sun & Moon card (TonightAtAGlanceFragment). -->
+  <dialog id="tonight-dialog">
+    <h2>Tonight</h2>
+    <h3>Sun</h3>
+    <dl id="tonight-sun" class="info"></dl>
+    <h3 id="tonight-moon-phase">Moon</h3>
+    <p id="tonight-moon-text"></p>
+    <dl id="tonight-moon" class="info"></dl>
+    <p><button class="close">Close</button></p>
+  </dialog>
+
+  <!-- The image info's Change Target… (ImageMetaDataFragment). -->
+  <dialog id="target-pick-dialog">
+    <h2>Change Target…</h2>
+    <input id="target-pick-search" type="search" placeholder="Search" autocomplete="off">
+    <ul id="target-pick-list"></ul>
+    <p><button class="close">Cancel</button></p>
+  </dialog>
+
+  <dialog id="edit-dialog">
+    <h2>Adjust Image</h2>
+    <canvas id="edit-canvas"></canvas>
+    <div id="edit-sliders">
+      <label><span data-reset="brightness">Brightness</span><input name="brightness" type="range" min="0" max="100" value="50"></label>
+      <label><span data-reset="contrast">Contrast</span><input name="contrast" type="range" min="0" max="100" value="50"></label>
+      <label><span data-reset="saturation">Saturation</span><input name="saturation" type="range" min="0" max="100" value="50"></label>
+      <label><span data-reset="red">Red</span><input name="red" type="range" min="-100" max="100" value="0"></label>
+      <label><span data-reset="green">Green</span><input name="green" type="range" min="-100" max="100" value="0"></label>
+      <label><span data-reset="blue">Blue</span><input name="blue" type="range" min="-100" max="100" value="0"></label>
+    </div>
+    <p><button id="edit-crop">Crop/Rotate</button> <button id="edit-revert" disabled>Revert</button>
+      <button id="edit-overwrite" disabled>Overwrite</button> <button id="edit-export">Export Copy</button>
+      <button class="close">Close</button></p>
+  </dialog>
+
+  <dialog id="crop-dialog">
+    <h2>Crop/Rotate</h2>
+    <div id="crop-box"><canvas id="crop-canvas"></canvas><div id="crop-rect" hidden></div></div>
+    <p>Drag across the image to crop it.</p>
+    <p><label>Aspect Ratio <select id="crop-ratio"></select></label></p>
+    <p><button id="crop-rotate-left">Rotate ⟲</button> <button id="crop-rotate">Rotate ⟳</button> <button id="crop-reset">Reset</button>
+      <button id="crop-done">Done</button> <button class="close">Cancel</button></p>
+  </dialog>
+
+  <div id="toasts"></div>
+  <script type="module" src="app.js"></script>
+</body>
+</html>

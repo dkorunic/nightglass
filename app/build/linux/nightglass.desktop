@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Nightglass
+Comment=Control a Celestron Origin telescope
+Exec=nightglass
+Icon=nightglass
+Categories=Science;Astronomy;
+Terminal=false

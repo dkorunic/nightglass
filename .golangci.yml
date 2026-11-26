@@ -1,0 +1,89 @@
+version: "2"
+linters:
+  default: all
+  disable:
+    - cyclop
+    - depguard
+    - dupl
+    # betteralign (task fmt) owns field order, embedded fields included.
+    - embeddedstructfieldcheck
+    # Errors carry the app's alert text ("Title: message"), built where
+    # they are raised, as the app shows them.
+    - err113
+    # Same rename trap as wsl below: `default: all` re-enables this under its
+    # v5 name, and nearly every hit is a struct (Wails options, payloads)
+    # that cannot meaningfully be filled exhaustively.
+    - exhaustruct
+    - exhaustruct_v5
+    - forbidigo
+    # Files keep each bound method next to the helpers it uses.
+    - funcorder
+    - funlen
+    - gochecknoglobals
+    - gocognit
+    # Same reason as cyclop and gocognit: statusText and friends are the
+    # app's status rules as one table-like switch.
+    - gocyclo
+    # Deprecated in favour of gomodguard_v2, which `default: all` already
+    # enables; naming it here only silences the deprecation warning.
+    - gomodguard
+    - lll
+    - mnd
+    # Payload structs are named after the JSON keys, without tags.
+    - musttag
+    - varnamelen
+    - wrapcheck
+    - noinlineerr
+    # Named results document same-typed values (lon, lat, r; ra, dec, mag).
+    - nonamedreturns
+    # `default: all` re-enables the deprecated `wsl` unless it is named too.
+    - wsl
+    - wsl_v5
+  settings:
+    goconst:
+      # Protocol names (modules, commands, keys, states) read as the wire.
+      ignore-string-values: ['^[A-Z][A-Za-z0-9]*$', '^[A-Z][A-Z0-9_]+$']
+    ireturn:
+      # The defaults plus type parameters.
+      allow: [anon, error, empty, stdlib, generic]
+    staticcheck:
+      # The defaults minus ST1005: error strings are the app's capitalised
+      # alert titles.
+      checks: [all, -ST1000, -ST1003, -ST1005, -ST1016, -ST1020, -ST1021, -ST1022]
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    rules:
+      # Names follow the Origin's JSON keys (Uuid, TileId, CpuFanOn).
+      - linters: [revive]
+        text: "var-naming: .*(Uuid|Id|Cpu)"
+      - linters: [revive]
+        text: "^error-strings:"
+      # EXIF counts and offsets and test pixels are far below the type limits.
+      - path: (origin/exif\.go|origin/fake/images\.go)$
+        linters: [gosec]
+        text: G115
+      # The fakes push notifications on their own connections.
+      - path: (origin/fake|cmd/origin-fake)/
+        linters: [contextcheck]
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+      - ".*_test\\.go$"
+formatters:
+  enable:
+    - gci
+    - gofmt
+    - gofumpt
+    - goimports
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$

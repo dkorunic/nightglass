@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-FileCopyrightText: 2026 Dinko Korunic <dinko.korunic@gmail.com> -->
+<!-- SPDX-License-Identifier: MIT -->
+<!-- Nightglass icon: a crescent moon and stars seen through a round glass. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <radialGradient id="sky" cx="40%" cy="35%" r="75%">
+      <stop offset="0" stop-color="#2b4a7a"/>
+      <stop offset="0.6" stop-color="#15233f"/>
+      <stop offset="1" stop-color="#090f1c"/>
+    </radialGradient>
+    <linearGradient id="rim" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#9fb7d9"/>
+      <stop offset="0.5" stop-color="#4f6f9e"/>
+      <stop offset="1" stop-color="#22324f"/>
+    </linearGradient>
+    <clipPath id="glass"><circle cx="512" cy="512" r="380"/></clipPath>
+    <!-- The crescent: a disc with an offset disc cut out, so the sky shows through. -->
+    <mask id="crescent">
+      <circle cx="470" cy="500" r="190" fill="#fff"/>
+      <circle cx="555" cy="440" r="175" fill="#000"/>
+    </mask>
+  </defs>
+  <!-- Rounded tile, as desktop icons are drawn. -->
+  <rect x="32" y="32" width="960" height="960" rx="210" fill="#0d1526"/>
+  <!-- The glass: night sky inside a metal rim. -->
+  <circle cx="512" cy="512" r="400" fill="url(#rim)"/>
+  <circle cx="512" cy="512" r="380" fill="url(#sky)"/>
+  <g clip-path="url(#glass)">
+    <circle cx="470" cy="500" r="190" fill="#f3e6b8" mask="url(#crescent)"/>
+    <!-- Stars. -->
+    <g fill="#ffffff">
+      <circle cx="640" cy="720" r="12"/>
+      <circle cx="620" cy="300" r="9"/>
+      <circle cx="745" cy="420" r="7"/>
+      <circle cx="330" cy="290" r="8"/>
+      <circle cx="380" cy="760" r="10"/>
+      <circle cx="560" cy="780" r="6"/>
+    </g>
+    <!-- A four-point sparkle. -->
+    <path d="M700 560 L712 610 L760 622 L712 634 L700 684 L688 634 L640 622 L688 610 Z" fill="#ffffff" opacity="0.9"/>
+    <!-- Glass highlight. -->
+    <ellipse cx="380" cy="300" rx="200" ry="110" fill="#ffffff" opacity="0.07" transform="rotate(-30 380 300)"/>
+  </g>
+</svg>
