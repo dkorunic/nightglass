@@ -66,8 +66,10 @@ func New(addr string) (*Server, error) {
 		return nil, err
 	}
 	s := &Server{
-		conns:  map[*websocket.Conn]struct{}{},
-		absent: map[string]Msg{},
+		conns: map[*websocket.Conn]struct{}{},
+		// An Origin answers every Optics command with an error (fixed RASA 6
+		// optics; Celestron's web app). Which code is not known.
+		absent: map[string]Msg{"Optics": {"ErrorCode": -1, "ErrorMessage": "Optics are not configurable on Origin"}},
 		files:  map[string][]byte{},
 		info: map[string]Msg{
 			"Camera/GetCameraInfo":              {"DefaultIso": 200, "MinIso": 100, "MaxIso": 20000, "MinExposure": 0.001, "MaxExposure": 30.0, "IsColor": true},

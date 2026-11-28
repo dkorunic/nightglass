@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"math"
 	"slices"
+	"strings"
 	"time"
 )
 
@@ -231,7 +232,7 @@ func (c *Client) RunImaging(ctx context.Context, im Imaging) error {
 		im.Uuid = NewUUID()
 	}
 	p := map[string]any{
-		"Uuid": im.Uuid, "Name": im.Name, "SaveRawImage": im.SaveRaw,
+		"Uuid": im.Uuid, "Name": FolderName(im.Name), "SaveRawImage": im.SaveRaw,
 		"ContinueImagingIfStackingFails": !im.StopOnPlateSolveFail,
 	}
 	if im.Manual {
@@ -260,6 +261,26 @@ func (c *Client) RunImaging(ctx context.Context, im Imaging) error {
 	_, err := c.Send(ctx, "TaskController", "RunImaging", p)
 
 	return err
+}
+
+// FolderName is name as the Origin may make a folder of it on its card
+// (RunImaging's Name, RunCaptureMosaic's ObjectName; Celestron's web app
+// cleans it too): path separators, characters Windows refuses (folders go to
+// USB sticks) and control characters become "_", as does a name of only
+// dots; spaces stay, as the app sends names ("M 42").
+func FolderName(name string) string {
+	s := strings.Map(func(r rune) rune {
+		if r < 0x20 || strings.ContainsRune(`/\:*?"<>|`, r) {
+			return '_'
+		}
+
+		return r
+	}, name)
+	if s == "." || s == ".." {
+		return "_"
+	}
+
+	return s
 }
 
 // wireTrack is a TargetTrack as the Origin takes it: J2000 radians.

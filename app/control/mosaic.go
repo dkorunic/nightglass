@@ -251,7 +251,7 @@ func (a *App) StartMosaic(m MosaicStart) error {
 		p["DitherInterval"], p["DitherDistance"] = s.DitherInterval, s.DitherDistance
 	}
 	if m.Name != "" {
-		p["ObjectName"] = m.Name
+		p["ObjectName"] = origin.FolderName(m.Name)
 		for _, t := range a.targets(m.Catalog, a.now()) {
 			if t.Name != m.Name {
 				continue

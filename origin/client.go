@@ -87,9 +87,8 @@ var StatusQueries = [][2]string{
 	{"Environment", "GetSensors"},
 	{"LedRing", "GetBrightnessLevel"},
 	{"Focuser", "GetFocuserAdvancedSettings"},
-	// Not asked by the app; Celestron's web app asks it on connect for
-	// MirrorFlip, which RunCenterTarget's offsets depend on.
-	{"Optics", "GetConfiguration"},
+	// Not Optics: an Origin's optics are fixed (RASA 6) and it answers every
+	// Optics command with an error (Celestron's web app, firmware 1.5.6286).
 }
 
 // polled are re-asked when no update arrived for two poll intervals, in case

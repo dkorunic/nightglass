@@ -181,16 +181,10 @@ func (a *App) CenterHere(x, y float64) error {
 	if !ready(c) || a.Settings().Snapshot || a.Activity().MasterBusy {
 		return errShown // the app's reframe button is disabled then
 	}
-	x = min(max(x, 0), 1)
-	// With MirrorFlip the Origin flips images left-right before sending them,
-	// but OffsetX is in the unflipped sensor frame (Celestron's web app,
-	// liveview.js; not in the app, which never reads Optics).
-	var optics struct{ MirrorFlip bool }
-	if m, ok := c.Last("Optics/GetConfiguration"); ok && m.Decode(&optics) == nil && optics.MirrorFlip {
-		x = 1 - x
-	}
+	// The image as shown is the sensor's: an Origin has no Optics MirrorFlip
+	// (that is Pandora's, for other telescopes).
 	if _, err := c.Send(context.Background(), "TaskController", "RunCenterTarget", map[string]any{
-		"OffsetX": x, "OffsetY": min(max(y, 0), 1),
+		"OffsetX": min(max(x, 0), 1), "OffsetY": min(max(y, 0), 1),
 	}); err != nil {
 		return err
 	}

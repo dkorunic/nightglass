@@ -193,25 +193,22 @@ func TestCenterHere(t *testing.T) {
 	}
 }
 
-// With Optics MirrorFlip the Origin flips images left-right before sending
-// them, but RunCenterTarget's OffsetX is in the unflipped sensor frame, so
-// the crosshair's x is mirrored back (as Celestron's web app, liveview.js).
-func TestCenterHereMirrorFlip(t *testing.T) {
-	a, _, s := connectedTo(t, func(s *fake.Server) {
-		s.SetInfo("Optics/GetConfiguration", fake.Msg{"ModelName": "Custom", "MirrorFlip": true})
-	})
-	c, _ := a.cl()
-	for end := time.Now().Add(2 * time.Second); time.Now().Before(end); time.Sleep(5 * time.Millisecond) {
-		if _, ok := c.Last("Optics/GetConfiguration"); ok {
-			break
-		}
-	}
+// An Origin answers every Optics command with an error (its optics are a
+// fixed RASA 6; Celestron's web app hides Optics for it), so none is sent:
+// not on connect, not for Center Here, whose offsets are the image's as shown.
+func TestNoOpticsCommands(t *testing.T) {
+	a, _, s := connected(t)
 	if err := a.CenterHere(0.25, 0.6); err != nil {
 		t.Fatal(err)
 	}
 	m, ok := s.Wait(fake.Is("TaskController", "RunCenterTarget"), time.Second)
-	if !ok || m["OffsetX"] != 0.75 || m["OffsetY"] != 0.6 {
+	if !ok || m["OffsetX"] != 0.25 || m["OffsetY"] != 0.6 {
 		t.Fatalf("RunCenterTarget %v", m)
+	}
+	for _, m := range s.Received() {
+		if m["Destination"] == "Optics" {
+			t.Errorf("sent %v", m)
+		}
 	}
 }
 

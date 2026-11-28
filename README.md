@@ -144,11 +144,9 @@ Run against a real Origin, from the GUI and once with `originctl`. Items marked
    **verify** both modes and snapshot (manual live view).
 9. Night mode (N) turns the whole window red.
 10. Snapshot mode: Capture Image takes a snapshot to save or delete.
-    Reframe: click the image, Center Here recentres there (with Optics
-    `MirrorFlip` the x offset is mirrored, as Celestron's web app does;
-    **verify** the direction, and the `MirrorFlip` an Origin reports to
-    `Optics/GetConfiguration` in `originctl watch`). The filter button
-    changes filters and offers autofocus.
+    Reframe: click the image, Center Here recentres there (**verify** the
+    offsets' direction). The filter button changes filters and offers
+    autofocus.
 11. Files: list, re-download, copy to a USB stick (progress, cancel) and
     delete image folders. Origin: each advanced setting changes the
     telescope (**verify** the dew heater, fans and lights respond).

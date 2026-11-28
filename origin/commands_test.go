@@ -173,6 +173,15 @@ func TestRunImagingLikeApp(t *testing.T) {
 		t.Errorf("payload %v", m)
 	}
 
+	// The Origin makes the run's folder of Name: a catalogue name with path
+	// characters (the Rosette's) is sent without them; spaces stay.
+	if err := c.RunImaging(context.Background(), Imaging{Name: "NGC 2237/2238/2239/2246"}); err != nil {
+		t.Fatal(err)
+	}
+	if m := last(t, s, "TaskController", "RunImaging"); m["Name"] != "NGC 2237_2238_2239_2246" {
+		t.Errorf("Name %q", m["Name"])
+	}
+
 	im = Imaging{Name: "X", Manual: true, ExposureSec: 15, ISO: 500, SaveRaw: true, Dither: true, DitherDistance: 15, DitherInterval: 3}
 	if err := c.RunImaging(context.Background(), im); err != nil {
 		t.Fatal(err)
@@ -390,5 +399,20 @@ func TestAvailableStackedMastersAndFilter(t *testing.T) {
 	}
 	if m := last(t, s, "Camera", "SetFilter"); m["Filter"] != "Clear" {
 		t.Errorf("SetFilter payload %v", m)
+	}
+}
+
+func TestFolderName(t *testing.T) {
+	for in, want := range map[string]string{
+		"M 42":                  "M 42",
+		"NGC 1973/1975(NEBULA)": "NGC 1973_1975(NEBULA)",
+		`a\b:c*d?e"f<g>h|i`:     "a_b_c_d_e_f_g_h_i",
+		"tab\tnewline\n":        "tab_newline_",
+		"..":                    "_",
+		"":                      "",
+	} {
+		if got := FolderName(in); got != want {
+			t.Errorf("FolderName(%q) = %q, want %q", in, got, want)
+		}
 	}
 }

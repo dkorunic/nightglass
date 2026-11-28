@@ -34,6 +34,7 @@ func TestDefaultHandleRefusals(t *testing.T) {
 		{"ImageServer", "DeleteFile", Msg{"FilePath": "Calibration/c/dark.tiff"}, 0},
 		{"ImageServer", "DeleteFile", Msg{"FilePath": "Temp/0.jpg"}, -3},
 		{"TaskController", "RunImaging", nil, -4}, // no Uuid: MISSING_DATA
+		{"Optics", "GetConfiguration", nil, -1},   // an Origin's optics are fixed
 	} {
 		if got := code(c.dest, c.cmd, c.extra); got != c.want {
 			t.Errorf("%s/%s %v: ErrorCode %v, want %d", c.dest, c.cmd, c.extra, got, c.want)
