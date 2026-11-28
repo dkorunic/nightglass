@@ -32,6 +32,8 @@ function setConnected(c, host, error) {
   const badge = $("#conn");
   badge.className = `badge ${c ? "on" : "off"}`;
   badge.textContent = c ? `Connected to ${host}` : host ? `Reconnecting to ${host}…` : "Not connected";
+  // The web client shows a bare dot, the connection under the status text.
+  badge.title = $("#conn-host").textContent = badge.textContent;
   $("#banner").hidden = c || !host;
   $("#st-host").textContent = host || "-";
   $$(".needs-conn").forEach((el) => (el.disabled = !c));
@@ -473,8 +475,10 @@ function originDate(d) {
 function applyDisplay() {
   document.body.style.setProperty("--night-brightness", String((settings.NightBrightness || 65) / 100));
 }
-// Opening the status details asks again, as the app's status screen does.
-$("#more-status").ontoggle = () => { if ($("#more-status").open && connected) act("RefreshStatus"); };
+// Opening a status tab asks again, as the app's status screen does.
+for (const t of $$("#ctrl-tabs .tab:not([data-pane='cp-target'])")) {
+  t.addEventListener("click", () => connected && act("RefreshStatus"));
+}
 $("#save-shown").onclick = async () => {
   const p = await act("SaveShown");
   if (p) toast("info", `Saved ${p}`);

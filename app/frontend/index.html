@@ -13,7 +13,7 @@
        horizontal tabs. The markup and styles are Nightglass's own. -->
   <header id="statusbar">
     <div class="brand">Nightglass</div>
-    <span id="conn" class="badge off" title="Connection (click to reconnect)">Not connected</span>
+    <span id="conn" class="badge off" title="Not connected">Not connected</span>
     <div class="sep"></div>
     <button id="initialize" class="btn-primary" hidden></button>
     <button id="finish-imaging" class="needs-conn btn-primary" disabled>Finish imaging</button>
@@ -25,6 +25,7 @@
         <progress id="progress" max="1" hidden></progress>
       </div>
       <div class="statusbar-sub">
+        <span id="conn-host">Not connected</span>
         <span id="target-name" hidden></span>
         <span id="manual-mode" hidden></span>
         <span id="warning" hidden></span>
@@ -47,54 +48,90 @@
 
   <main id="lower">
     <div id="ctrl-panel">
+      <!-- The web client's control tabs, in its order (Target, System, Power,
+           Mount, Camera, Focuser, Environment), each listing its readings. -->
       <nav id="ctrl-tabs" class="tabstrip vertical" role="tablist" aria-label="Controls">
-        <button class="tab active" role="tab" data-pane="cp-status">Status</button>
+        <button class="tab active" role="tab" data-pane="cp-target">Target</button>
+        <button class="tab" role="tab" data-pane="cp-system">System</button>
+        <button class="tab" role="tab" data-pane="cp-power">Power</button>
         <button class="tab" role="tab" data-pane="cp-mount">Mount</button>
+        <button class="tab" role="tab" data-pane="cp-camera">Camera</button>
         <button class="tab" role="tab" data-pane="cp-focuser">Focuser</button>
-        <button class="tab" role="tab" data-pane="cp-target">Target</button>
+        <button class="tab" role="tab" data-pane="cp-environment">Environment</button>
       </nav>
       <div id="ctrl-content">
-        <section id="cp-status" class="pane active" role="tabpanel">
-          <h2 class="pane-heading">Status</h2>
+        <section id="cp-target" class="pane active" role="tabpanel">
+          <h2 class="pane-heading">Target</h2>
           <div class="section">
-            <dl id="status">
-              <dt>Task</dt><dd id="st-task">-</dd>
-              <dt>Alignment</dt><dd id="st-aligned">-</dd>
-              <dt>RA (J2000)</dt><dd id="st-ra">-</dd>
-              <dt>Dec. (J2000)</dt><dd id="st-dec">-</dd>
-              <dt>Altitude</dt><dd id="st-alt">-</dd>
-              <dt>Azimuth</dt><dd id="st-az">-</dd>
-              <dt>Battery</dt><dd id="st-battery">-</dd>
-              <dt>Charger</dt><dd id="st-charger">-</dd>
-              <dt>Focuser Position</dt><dd id="st-focus">-</dd>
-              <dt>Camera</dt><dd id="st-camera">-</dd>
-              <dt>Weather</dt><dd id="st-env">-</dd>
-              <dt>Dew heater</dt><dd id="st-dew">-</dd>
-              <dt>Free Disk Space</dt><dd id="st-disk">-</dd>
-              <dt>Autoguider</dt><dd id="st-guider">-</dd>
-            </dl>
+            <div class="section-title">Selected</div>
+            <p id="selected">No target selected</p>
+            <label class="field">RA <input id="ra" placeholder="RA h m s" size="12"></label>
+            <label class="field">Dec <input id="dec" placeholder="Dec ° ′ ″" size="12"></label>
           </div>
-          <details id="more-status" class="section">
-            <summary class="section-title">More status</summary>
-            <dl id="status-more">
-              <dt>Latitude</dt><dd id="st-lat">-</dd>
-              <dt>Longitude</dt><dd id="st-lon">-</dd>
-              <dt>Date</dt><dd id="st-date">-</dd>
-              <dt>Time</dt><dd id="st-time">-</dd>
-              <dt>Timezone</dt><dd id="st-tz">-</dd>
-              <dt>Encoder Azimuth</dt><dd id="st-enc-az">-</dd>
-              <dt>Encoder Altitude</dt><dd id="st-enc-alt">-</dd>
+          <div class="section">
+            <div class="section-title">Actions</div>
+            <div class="row">
+              <button id="goto" class="needs-conn btn-primary" disabled>Go to</button>
+              <button id="image" class="needs-conn btn-primary" disabled>Image</button>
+              <button id="mosaic" class="needs-conn" disabled title="Image a larger area as tiles, composed on the Origin">Mosaic…</button>
+            </div>
+            <label class="field" title="The Origin ends the run itself after this long; empty: until Finish">Stop after (min)
+              <input id="duration" type="number" min="0" step="1" size="4" placeholder="–"></label>
+          </div>
+        </section>
+
+        <section id="cp-system" class="pane" role="tabpanel">
+          <h2 class="pane-heading">System</h2>
+          <div class="section">
+            <div class="section-title">Origin</div>
+            <dl class="info">
+              <dt>Task</dt><dd id="st-task">-</dd>
+              <dt>Free Disk Space</dt><dd id="st-disk">-</dd>
               <dt>Address</dt><dd id="st-host">-</dd>
               <dt>Download</dt><dd id="st-speed">-</dd>
             </dl>
-          </details>
+          </div>
+          <div class="section">
+            <div class="section-title">Clock</div>
+            <dl class="info">
+              <dt>Date</dt><dd id="st-date">-</dd>
+              <dt>Time</dt><dd id="st-time">-</dd>
+              <dt>Timezone</dt><dd id="st-tz">-</dd>
+            </dl>
+          </div>
+        </section>
+
+        <section id="cp-power" class="pane" role="tabpanel">
+          <h2 class="pane-heading">Power</h2>
+          <div class="section">
+            <div class="section-title">Battery</div>
+            <dl class="info">
+              <dt>Battery</dt><dd id="st-battery">-</dd>
+              <dt>Charger</dt><dd id="st-charger">-</dd>
+            </dl>
+          </div>
         </section>
 
         <section id="cp-mount" class="pane" role="tabpanel">
           <h2 class="pane-heading">Mount</h2>
           <div class="section">
-            <div class="section-title">Telescope</div>
-            <div class="row"><button id="halt" class="needs-conn btn-danger">Halt all tasks</button></div>
+            <div class="section-title">Position</div>
+            <dl class="info">
+              <dt>RA (J2000)</dt><dd id="st-ra">-</dd>
+              <dt>Dec. (J2000)</dt><dd id="st-dec">-</dd>
+              <dt>Altitude</dt><dd id="st-alt">-</dd>
+              <dt>Azimuth</dt><dd id="st-az">-</dd>
+              <dt>Encoder Azimuth</dt><dd id="st-enc-az">-</dd>
+              <dt>Encoder Altitude</dt><dd id="st-enc-alt">-</dd>
+            </dl>
+          </div>
+          <div class="section">
+            <div class="section-title">Alignment</div>
+            <dl class="info">
+              <dt>Alignment</dt><dd id="st-aligned">-</dd>
+              <dt>Latitude</dt><dd id="st-lat">-</dd>
+              <dt>Longitude</dt><dd id="st-lon">-</dd>
+            </dl>
           </div>
           <div class="section">
             <div class="section-title">Slew <small>(arrow keys)</small></div>
@@ -106,8 +143,21 @@
               <span></span><button class="needs-conn" data-alt="-1" data-azm="0">▼</button><span></span>
             </div>
             <label class="field">Rate
-              <select id="rate"><option>1</option><option>2</option><option selected>3</option><option>4</option></select>
+              <select id="rate"><option>1</option><option>2</option><option>3</option><option selected>4</option></select>
             </label>
+            <div class="row"><button id="halt" class="needs-conn btn-danger">Halt all tasks</button></div>
+          </div>
+          <div class="section">
+            <div class="section-title">StarSense Autoguider</div>
+            <dl class="info"><dt>Autoguider</dt><dd id="st-guider">-</dd></dl>
+          </div>
+        </section>
+
+        <section id="cp-camera" class="pane" role="tabpanel">
+          <h2 class="pane-heading">Camera</h2>
+          <div class="section">
+            <div class="section-title">Capture</div>
+            <dl class="info"><dt>Camera</dt><dd id="st-camera">-</dd></dl>
           </div>
         </section>
 
@@ -115,6 +165,7 @@
           <h2 class="pane-heading">Focuser</h2>
           <div class="section">
             <div class="section-title"><span id="focus-label">Focuser Position</span></div>
+            <dl class="info"><dt>Position</dt><dd id="st-focus">-</dd></dl>
             <p><button id="focus-value" class="needs-conn focus-ctl value-btn" title="Set the focuser position">–</button></p>
             <div class="row">
               <button class="needs-conn focus-ctl" data-step="-2">−100</button>
@@ -136,23 +187,15 @@
           </div>
         </section>
 
-        <section id="cp-target" class="pane" role="tabpanel">
-          <h2 class="pane-heading">Target</h2>
+        <section id="cp-environment" class="pane" role="tabpanel">
+          <h2 class="pane-heading">Environment</h2>
           <div class="section">
-            <div class="section-title">Selected</div>
-            <p id="selected">No target selected</p>
-            <label class="field">RA <input id="ra" placeholder="RA h m s" size="12"></label>
-            <label class="field">Dec <input id="dec" placeholder="Dec ° ′ ″" size="12"></label>
+            <div class="section-title">Sensors</div>
+            <dl class="info"><dt>Weather</dt><dd id="st-env">-</dd></dl>
           </div>
           <div class="section">
-            <div class="section-title">Actions</div>
-            <div class="row">
-              <button id="goto" class="needs-conn btn-primary" disabled>Go to</button>
-              <button id="image" class="needs-conn btn-primary" disabled>Image</button>
-              <button id="mosaic" class="needs-conn" disabled title="Image a larger area as tiles, composed on the Origin">Mosaic…</button>
-            </div>
-            <label class="field" title="The Origin ends the run itself after this long; empty: until Finish">Stop after (min)
-              <input id="duration" type="number" min="0" step="1" size="4" placeholder="–"></label>
+            <div class="section-title">Dew Heater</div>
+            <dl class="info"><dt>Dew heater</dt><dd id="st-dew">-</dd></dl>
           </div>
         </section>
       </div>
@@ -160,11 +203,11 @@
 
     <div id="main-panel">
       <nav id="main-tabs" class="tabstrip" role="tablist" aria-label="Views">
-        <button class="tab active" role="tab" data-pane="mp-liveview">Live View</button>
-        <button class="tab" role="tab" data-pane="mp-targets">Targets</button>
+        <button class="tab active" role="tab" data-pane="mp-targets">Targets</button>
+        <button class="tab" role="tab" data-pane="mp-liveview">Live View</button>
       </nav>
       <div id="main-content">
-        <section id="mp-liveview" class="pane active" role="tabpanel">
+        <section id="mp-liveview" class="pane" role="tabpanel">
           <div id="viewer">
             <div class="toolbar">
               <button id="filter" class="needs-conn">Clear Filter</button>
@@ -193,7 +236,7 @@
           </div>
         </section>
 
-        <section id="mp-targets" class="pane" role="tabpanel">
+        <section id="mp-targets" class="pane active" role="tabpanel">
           <div id="targets">
             <div class="toolbar">
               <select id="catalog"></select>
