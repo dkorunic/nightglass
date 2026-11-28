@@ -22,6 +22,7 @@ import "./optics.js";
 import "./schedules.js";
 import "./finalview.js";
 import "./planetarium.js";
+import "./panes.js";
 
 const ROW = 24; // px, matches --row in style.css
 const deg = (rad) => (rad * 180) / Math.PI;
@@ -206,6 +207,7 @@ function applyStatus(k, f) {
         const pct = batteryPercent(f.BatteryVoltage); // an estimate from the voltage
         set("#st-battery", `${batteryText(f.BatteryLevel)}${pct != null ? ` (~${pct}%)` : ""}`);
         set("#st-voltage", f.BatteryVoltage ? `${f.BatteryVoltage.toFixed(1)} V` : "–");
+        set("#st-bcurrent", f.BatteryCurrent != null ? `${f.BatteryCurrent.toFixed(1)} A` : "–");
         // The web client takes 100 °C and above as no reading.
         set("#st-btemp", celsius(f.BatteryTemperature < 100 ? f.BatteryTemperature : null));
       }
@@ -544,7 +546,8 @@ $("#save-final").onclick = async () => {
 // ---------- telescope controls ----------
 
 $("#initialize").onclick = () => act("Initialize");
-$("#halt").onclick = () => act("HaltTasks");
+// Stop Slewing, as the web client's: the slew stopped and the tasks halted.
+$("#halt").onclick = () => { $("#slew-stop").click(); act("HaltTasks"); };
 $("#autofocus").onclick = () => act("AutoFocus");
 
 // T: focus as the app's FocusOptionsFragment: fine and rough steps from the
@@ -866,16 +869,9 @@ $("#open-settings").onclick = async () => {
   form.ISO.value = String(iso.Value); // the saved ISO, else the camera's default
   if (!form.TimeZone.value) form.TimeZone.value = Intl.DateTimeFormat().resolvedOptions().timeZone;
   updateCameraLocks();
-  updateDither();
+  sliderLabels($("#settings-form"));
   $("#settings-dialog").showModal();
 };
-// The dither sliders work only with dithering on (enableDitherSubOptions).
-function updateDither() {
-  const f = $("#settings-form");
-  f.DitherDistance.disabled = f.DitherInterval.disabled = !f.Dither.checked;
-  sliderLabels(f);
-}
-$("#settings-form").Dither.onchange = updateDither;
 $("#settings-form").addEventListener("input", () => sliderLabels($("#settings-form")));
 $("#settings-form").ManualImaging.onchange = updateCameraLocks;
 $("#settings-form").onsubmit = async (e) => {

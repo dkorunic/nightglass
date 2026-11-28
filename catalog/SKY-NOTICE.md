@@ -7,7 +7,7 @@ The Planetarium's stars and constellations (`catalog/sky.gob`, packed by
   (Hoffleit, D. & Warren, W. H. Jr., 1991; NASA Astronomical Data Center,
   CDS catalogue V/50), in the public domain: positions (J2000), V
   magnitudes and B−V colours of its 9,096 stars with a position.
-- **Constellation lines and name positions:** d3-celestial, after the IAU's
+- **Constellation lines, name positions and boundaries:** d3-celestial, after the IAU's
   constellation charts,
 
   > Copyright (c) 2015, Olaf Frohn. All rights reserved.

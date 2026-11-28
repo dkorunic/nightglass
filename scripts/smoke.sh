@@ -35,7 +35,7 @@ expect() { # expect DESCRIPTION OUTPUT ERE-PATTERN (grep -E: GNU and BSD grep ag
 }
 status() { curl -s -o /dev/null -w '%{http_code} %{content_type}' "http://$APP$1"; }
 
-for f in / /app.js /ui.js /targets.js /files.js /origin.js /mosaics.js /quickstart.js /gallery.js /camera.js /wifi.js /optics.js /schedules.js /finalview.js /planetarium.js /style.css /wails/runtime.js; do
+for f in / /app.js /ui.js /targets.js /files.js /origin.js /mosaics.js /quickstart.js /gallery.js /camera.js /wifi.js /optics.js /schedules.js /finalview.js /planetarium.js /panes.js /style.css /wails/runtime.js; do
   expect "asset $f" "$(status "$f")" '^200'
 done
 expect "catalogs" "$(call Catalogs)" '"Name":"Solar System","Count":8.*"Name":"Messier","Count":110'

@@ -180,14 +180,22 @@ func (c *Client) AutoFocus(ctx context.Context, terrestrial bool, start int) err
 	if terrestrial {
 		_, err = c.Send(ctx, "TaskController", "RunTerrestrialAutoFocus", nil)
 	} else {
-		// UseFineFocus as Celestron's web client always sends it (its
-		// default "fine" range); the app sends none.
-		p := map[string]any{"UseFineFocus": true}
-		if start > 0 { // 0: from where the Origin chooses (after a filter change)
-			p["StartingPosition"] = start
-		}
-		_, err = c.Send(ctx, "TaskController", "RunInfinityAutoFocus", p)
+		// The fine range, Celestron's web client's default; the app sends none.
+		err = c.InfinityAutoFocus(ctx, start, true)
 	}
+
+	return err
+}
+
+// InfinityAutoFocus focuses on the stars from start (0: where the Origin
+// chooses, after a filter change) over the fine or the rough range, the
+// web client's Fine and Rough.
+func (c *Client) InfinityAutoFocus(ctx context.Context, start int, fine bool) error {
+	p := map[string]any{"UseFineFocus": fine}
+	if start > 0 {
+		p["StartingPosition"] = start
+	}
+	_, err := c.Send(ctx, "TaskController", "RunInfinityAutoFocus", p)
 
 	return err
 }

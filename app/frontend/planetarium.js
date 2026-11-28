@@ -2,53 +2,113 @@
 // SPDX-License-Identifier: MIT
 
 // The Planetarium of Celestron's web client, in Nightglass's own drawing:
-// the sky above the observer, its stars (the Yale Bright Star Catalogue)
-// and constellations, the chosen target list, the Moon and planets, the
-// target and the telescope. Go places every point (as the target table's);
-// this projects and draws them. A click chooses a target, Center Target
-// and Center Telescope turn the view to them.
+// a circular field of the sky seen from the observer's place, now or at a
+// chosen time, with its stars (the Yale Bright Star Catalogue), the
+// constellations, the chosen target list, the Sun, Moon and planets, the
+// guide lines, the target and the telescope. Go places every point (as the
+// target table's); this projects and draws them. A click chooses a
+// target; Center Target and Center Telescope turn the view to them.
 import { Events } from "/wails/runtime.js";
 import { $, $$, act, showPane, stored } from "./ui.js";
-import { lastMount, pos, rows, select, selected, settings } from "./app.js";
-import { dms, skyProject, skyScale, starColor, starRadius, targetFor } from "./targets.js";
+import { lastMount, pos, rows, select, selected, setSettings, settings } from "./app.js";
+import { commonName, dms, sexa, skyProject, skyScale, starColor, starRadius, targetFor, zoneOffset, zonedTime } from "./targets.js";
 
 const canvas = $("#sky"), ctx = canvas.getContext("2d");
-const view = { alt: 90, az: 180, fov: 185 }; // the whole sky, north up
-let chart = null; // SkyChart: stars, names, constellations
-let places = []; // SkyPositions: stars, line vertices, constellation names
-let solar = { rows: [], pos: [] };
+// The web client's opening view: south, 45° up, a 180° field.
+const view = { alt: 45, az: 180, fov: 180 };
+let chart = null; // SkyChart: stars, names, constellations, guide paths
+let places = []; // SkyPositions, in SkyChart's order
+let solar = { rows: [], pos: [] }; // SkyBodies: the Moon, planets and the Sun
+let listPos = null; // the target list's places at a chosen time (else app.js's pos)
 let star = null; // a star chosen as the target: { name, ra, dec }
-const show = {}; // what to draw, per viewer
+
+// What to draw, per viewer (the web client's display options).
+const show = {};
 for (const el of $$("[data-sky]")) {
   const v = stored(`sky:${el.dataset.sky}`);
   if (v != null) el.checked = v === "1";
   show[el.dataset.sky] = el.checked;
   el.onchange = () => { show[el.dataset.sky] = el.checked; stored(`sky:${el.dataset.sky}`, el.checked ? "1" : "0"); draw(); };
 }
-{
-  const v = Number(stored("sky:mag"));
-  if (v >= 2 && v <= 6.5) $("#sky-mag").value = v;
-  $("#sky-mag").oninput = () => { $("#sky-mag-val").textContent = Number($("#sky-mag").value).toFixed(1); stored("sky:mag", $("#sky-mag").value); draw(); };
-  $("#sky-mag-val").textContent = Number($("#sky-mag").value).toFixed(1); // drawn once the data comes
+for (const r of $$("input[name='sky-grid']")) {
+  r.checked = r.value === (stored("sky:gridkind") || "eq");
+  r.onchange = () => { stored("sky:gridkind", r.value); draw(); };
+}
+const gridKind = () => $("input[name='sky-grid']:checked")?.value ?? "eq";
+
+const deg = (rad) => (rad * 180) / Math.PI;
+const zone = () => settings.TimeZone || Intl.DateTimeFormat().resolvedOptions().timeZone;
+// at is the chosen time as Go takes it: "" for now.
+function at() {
+  if ($("#sky-now").checked || !$("#sky-date").value || !$("#sky-time").value) return "";
+  return new Date(zonedTime($("#sky-date").value, $("#sky-time").value, zone())).toISOString();
 }
 
-const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
-const deg = (rad) => (rad * 180) / Math.PI;
+// ---- location and time, in the pane ----
+function showPlace() {
+  const lat = settings.LatDeg ?? 0, lon = settings.LonDeg ?? 0;
+  if (document.activeElement !== $("#sky-lon")) $("#sky-lon").value = dms(Math.abs(lon), false).replace(/^[+−-]/, "");
+  if (document.activeElement !== $("#sky-lat")) $("#sky-lat").value = dms(Math.abs(lat), false).replace(/^[+−-]/, "");
+  for (const r of $$("input[name='sky-ew']")) r.checked = r.value === (lon < 0 ? "W" : "E");
+  for (const r of $$("input[name='sky-ns']")) r.checked = r.value === (lat < 0 ? "S" : "N");
+  if (document.activeElement !== $("#sky-zone")) $("#sky-zone").value = settings.TimeZone || "";
+  const off = zoneOffset(Date.now(), zone());
+  $("#sky-utc").textContent = `${off < 0 ? "−" : "+"}${Math.floor(Math.abs(off) / 60)}:${String(Math.abs(off) % 60).padStart(2, "0")}`;
+}
+// The time fields follow the clock while "Use Local System Time" is on.
+function showClock() {
+  if (!$("#sky-now").checked) return;
+  const p = Object.fromEntries(new Intl.DateTimeFormat("en-CA", { timeZone: zone(), hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" })
+    .formatToParts(new Date()).map((x) => [x.type, x.value]));
+  $("#sky-date").value = `${p.year}-${p.month}-${p.day}`;
+  $("#sky-time").value = `${p.hour}:${p.minute}:${p.second}`;
+}
+setInterval(showClock, 1000);
+async function savePlace() {
+  const num = (id) => sexa($(id).value.replace(/[°′″'"]/g, " ")); // as shown, or plain
+  const lon = num("#sky-lon"), lat = num("#sky-lat");
+  if (Number.isNaN(lon) || Number.isNaN(lat) || Math.abs(lat) > 90 || Math.abs(lon) > 180) return showPlace();
+  const next = {
+    ...settings, TimeZone: $("#sky-zone").value.trim() || settings.TimeZone,
+    LonDeg: $("input[name='sky-ew']:checked")?.value === "W" ? -Math.abs(lon) : Math.abs(lon),
+    LatDeg: $("input[name='sky-ns']:checked")?.value === "S" ? -Math.abs(lat) : Math.abs(lat),
+  };
+  if ((await act("SaveSettings", next)) === false) return showPlace();
+  setSettings((await act("Settings")) || next);
+  refresh();
+}
+for (const id of ["#sky-lon", "#sky-lat", "#sky-zone"]) $(id).onchange = savePlace;
+for (const r of $$("input[name='sky-ew'], input[name='sky-ns']")) r.onchange = savePlace;
+$("#sky-now").onchange = () => { showClock(); refresh(); };
+for (const id of ["#sky-date", "#sky-time"]) $(id).onchange = () => { $("#sky-now").checked = false; refresh(); };
 
-// ---- data: the chart once, the places every 30 s ----
+// ---- the field of view, both ways ----
+function showView() {
+  const set = (id, val) => document.activeElement !== $(id) && ($(id).value = val);
+  set("#sky-az", view.az.toFixed(1));
+  set("#sky-alt", view.alt.toFixed(1));
+  set("#sky-width", view.fov.toFixed(1));
+  $("#sky-fov").textContent = `${Math.round(view.fov)}° × ${Math.round(view.fov)}°`;
+}
+$("#sky-az").onchange = () => { view.az = ((Number($("#sky-az").value) % 360) + 360) % 360; draw(); };
+$("#sky-alt").onchange = () => { view.alt = Math.min(Math.max(Number($("#sky-alt").value), -90), 90); draw(); };
+$("#sky-width").onchange = () => { view.fov = Math.min(Math.max(Number($("#sky-width").value) || 180, 1), 180); draw(); };
+
+// ---- data: the chart once, the places every 30 s or on a new time ----
 async function refresh() {
   chart ??= await act("SkyChart");
-  places = (await act("SkyPositions")) || [];
-  const b = await act("SkyBodies"); // without changing the chosen list
+  const t = at();
+  places = (await act("SkyPositions", t)) || [];
+  const b = await act("SkyBodies", t); // without changing the chosen list
   solar = { rows: b?.Rows || [], pos: b?.Places || [] };
-  const tz = settings.TimeZone || undefined;
-  $("#sky-place").textContent = settings.LatDeg || settings.LonDeg
-    ? `${Math.abs(settings.LatDeg).toFixed(2)}° ${settings.LatDeg < 0 ? "S" : "N"}, ${Math.abs(settings.LonDeg).toFixed(2)}° ${settings.LonDeg < 0 ? "W" : "E"}` : "Not set";
-  $("#sky-time").textContent = new Intl.DateTimeFormat(undefined, { timeZone: tz, dateStyle: "medium", timeStyle: "short" }).format(new Date());
+  listPos = t ? (await act("PositionsAt", $("#catalog").value, t)) || [] : null;
+  await placeTyped();
+  showPlace();
   draw();
 }
-setInterval(refresh, 30_000);
-setTimeout(refresh, 500); // once app.js has the settings
+setInterval(() => $("#sky-now").checked && refresh(), 30_000);
+setTimeout(() => { showClock(); refresh(); }, 500); // once app.js has the settings
+$("#catalog").addEventListener("change", () => setTimeout(refresh, 300));
 
 // ---- drawing ----
 let queued = false;
@@ -66,24 +126,51 @@ function size() {
   ctx.setTransform(d, 0, 0, d, 0, 0);
   return [r.width, r.height];
 }
+// symbol draws a deep-sky object's mark by its type, as star charts do.
+function symbol(x, y, type) {
+  const t = type ?? "";
+  ctx.beginPath();
+  if (/Galaxy/.test(t)) ctx.ellipse(x, y, 5, 2.5, -0.5, 0, 2 * Math.PI);
+  else if (/Globular/.test(t)) {
+    ctx.arc(x, y, 4, 0, 2 * Math.PI);
+    ctx.moveTo(x - 4, y); ctx.lineTo(x + 4, y); ctx.moveTo(x, y - 4); ctx.lineTo(x, y + 4);
+  } else if (/Planetary/.test(t)) {
+    ctx.arc(x, y, 3, 0, 2 * Math.PI);
+    for (const [a, b] of [[0, 1], [0, -1], [1, 0], [-1, 0]]) { ctx.moveTo(x + 3 * a, y + 3 * b); ctx.lineTo(x + 6 * a, y + 6 * b); }
+  } else if (/Nebula|Supernova|Remnant/.test(t)) ctx.rect(x - 4, y - 4, 8, 8);
+  else if (/Cluster|Asterism|Star Cloud/.test(t)) { ctx.setLineDash([2, 2]); ctx.arc(x, y, 4.5, 0, 2 * Math.PI); }
+  else ctx.arc(x, y, 3, 0, 2 * Math.PI);
+  ctx.stroke();
+  ctx.setLineDash([]);
+}
 let v = {}; // the projection in use (for clicks)
 function paint() {
+  showView();
   if (!$("#mp-planetarium").classList.contains("active")) return;
   const [w, h] = size();
-  // The field is across the shorter side: at 180° the whole sky fits, as the web client's.
-  const side = Math.min(w, h);
-  v = { alt: view.alt, az: view.az, scale: skyScale(view.fov, side), cx: w / 2, cy: h / 2 };
-  const P = (alt, az) => skyProject(alt, az, v);
-  const dark = document.documentElement.dataset.theme !== "light";
-  ctx.fillStyle = dark ? "#05070d" : "#0b1530";
+  const side = Math.min(w, h), R = side / 2 - 4;
+  v = { alt: view.alt, az: view.az, scale: skyScale(view.fov, side - 8), cx: w / 2, cy: h / 2 };
+  const light = document.documentElement.dataset.theme === "light";
+  ctx.fillStyle = light ? "#dfe3ea" : "#000";
   ctx.fillRect(0, 0, w, h);
-  $("#sky-fov").textContent = `${Math.round((view.fov * w) / side)}° × ${Math.round((view.fov * h) / side)}°`;
   $("#sky-empty").hidden = places.length > 0;
-  if (!places.length || !chart) return;
-  const accent = css("--accent") || "#3b82f6";
-  ctx.font = "11px system-ui, sans-serif";
-
-  const line = (pts, closed = false) => {
+  // The field: a circle, the sky inside it.
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(v.cx, v.cy, R, 0, 2 * Math.PI);
+  ctx.fillStyle = "#03050b";
+  ctx.fill();
+  ctx.clip();
+  if (places.length && chart) paintSky((alt, az) => skyProject(alt, az, v), w, h);
+  ctx.restore();
+  ctx.strokeStyle = "rgba(140,150,170,0.6)";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.arc(v.cx, v.cy, R, 0, 2 * Math.PI);
+  ctx.stroke();
+}
+function paintSky(P, w, h) {
+  const line = (pts) => {
     ctx.beginPath();
     let pen = false;
     for (const p of pts) {
@@ -92,91 +179,121 @@ function paint() {
       else ctx.moveTo(p[0], p[1]);
       pen = true;
     }
-    if (closed) ctx.closePath();
     ctx.stroke();
   };
-  if (show.grid) {
-    ctx.strokeStyle = "rgba(120,140,190,0.18)";
-    ctx.lineWidth = 1;
-    for (let alt = -60; alt <= 60; alt += 30) {
-      line(Array.from({ length: 121 }, (_, i) => P(alt, i * 3)));
-    }
-    for (let az = 0; az < 360; az += 30) line(Array.from({ length: 61 }, (_, i) => P(-90 + i * 3, az)));
-  }
-  // Constellation figures, behind the stars.
+  const run = (k, n) => Array.from({ length: n }, (_, i) => P(places[k + 2 * i], places[k + 2 * i + 1]));
+  ctx.font = "11px system-ui, sans-serif";
   const nStars = chart.Stars.length / 4;
+  // Offsets into places: stars, each constellation's lines and boundary,
+  // the constellation names, then the guide paths.
   let k = 2 * nStars;
-  if (show.lines) {
-    ctx.strokeStyle = "rgba(90,140,220,0.45)";
+  const span = (n) => { const a = k; k += 2 * n; return [a, n]; };
+  const figures = chart.Constellations.map((f) => ({ lines: f.Lines.map(span), bounds: f.Bounds.map(span) }));
+  const labels = k;
+  k += 2 * chart.Constellations.length;
+  const paths = chart.Paths.map((p) => ({ kind: p.Kind, span: span(p.Count) }));
+
+  // Grids and guides, behind everything.
+  if (show.grid) {
+    ctx.strokeStyle = "rgba(90,120,180,0.28)";
     ctx.lineWidth = 1;
-  }
-  for (const f of chart.Constellations) {
-    for (const n of f.Lines) {
-      if (show.lines) line(Array.from({ length: n }, (_, i) => P(places[k + 2 * i], places[k + 2 * i + 1])));
-      k += 2 * n;
+    if (gridKind() === "eq") for (const p of paths) if (p.kind === "grid") line(run(...p.span));
+    if (gridKind() === "hz") {
+      for (let alt = 0; alt <= 60; alt += 30) line(Array.from({ length: 121 }, (_, i) => P(alt, i * 3)));
+      for (let az = 0; az < 360; az += 30) line(Array.from({ length: 31 }, (_, i) => P(i * 3, az)));
     }
   }
-  // Stars, faintest first so the bright ones lie on top.
-  const limit = Number($("#sky-mag").value);
-  for (let i = 0; i < nStars; i++) {
-    const mag = chart.Stars[4 * i + 2];
-    if (mag > limit) continue;
-    const p = P(places[2 * i], places[2 * i + 1]);
-    if (!p || p[0] < -5 || p[1] < -5 || p[0] > w + 5 || p[1] > h + 5) continue;
-    ctx.fillStyle = starColor(chart.Stars[4 * i + 3]);
-    ctx.beginPath();
-    ctx.arc(p[0], p[1], starRadius(mag, view.fov), 0, 2 * Math.PI);
-    ctx.fill();
-    const name = show.snames && chart.Names[i];
-    if (name && (mag < 1.6 || view.fov < 100)) {
-      ctx.fillStyle = "rgba(220,225,240,0.75)";
-      ctx.fillText(name, p[0] + 5, p[1] - 4);
+  for (const [kind, on, color] of [["equator", show.equator, "rgba(80,170,210,0.6)"], ["ecliptic", show.ecliptic, "rgba(230,150,40,0.75)"]]) {
+    if (!on) continue;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.2;
+    for (const p of paths) if (p.kind === kind) line(run(...p.span));
+  }
+  if (show.meridian) {
+    ctx.strokeStyle = "rgba(200,200,120,0.45)";
+    line([...Array.from({ length: 31 }, (_, i) => P(i * 3, 0)), ...Array.from({ length: 31 }, (_, i) => P(90 - i * 3, 180))]);
+  }
+  if (show.bounds) {
+    ctx.strokeStyle = "rgba(200,180,60,0.45)";
+    ctx.setLineDash([2, 4]);
+    for (const f of figures) for (const s of f.bounds) line(run(...s));
+    ctx.setLineDash([]);
+  }
+  if (show.lines) {
+    ctx.strokeStyle = "rgba(90,140,220,0.5)";
+    ctx.lineWidth = 1;
+    for (const f of figures) for (const s of f.lines) line(run(...s));
+  }
+  // Stars, to the naked eye's limit as the field narrows.
+  if (show.stars) {
+    const limit = view.fov >= 120 ? 5.5 : view.fov >= 60 ? 6 : 6.5;
+    for (let i = 0; i < nStars; i++) {
+      const mag = chart.Stars[4 * i + 2];
+      if (mag > limit) continue;
+      const p = P(places[2 * i], places[2 * i + 1]);
+      if (!p || p[0] < -5 || p[1] < -5 || p[0] > w + 5 || p[1] > h + 5) continue;
+      ctx.fillStyle = starColor(chart.Stars[4 * i + 3]);
+      ctx.beginPath();
+      ctx.arc(p[0], p[1], starRadius(mag, view.fov), 0, 2 * Math.PI);
+      ctx.fill();
+      const name = show.snames && chart.Names[i] && (mag < 1.6 || view.fov < 120) ? chart.Names[i] : "";
+      const no = show.snos && mag < (view.fov < 60 ? 5 : 2.5) ? `${mag.toFixed(1)}` : ""; // its magnitude
+      if (name || no) {
+        ctx.fillStyle = "rgba(235,238,245,0.85)";
+        ctx.fillText([name, no].filter(Boolean).join(" "), p[0] + 5, p[1] - 4);
+      }
     }
   }
   if (show.cnames) {
-    ctx.fillStyle = "rgba(110,160,235,0.7)";
+    ctx.fillStyle = "rgba(110,150,220,0.8)";
+    ctx.font = "italic 11px system-ui, sans-serif";
     ctx.textAlign = "center";
     chart.Constellations.forEach((f, i) => {
-      const p = P(places[k + 2 * i], places[k + 2 * i + 1]);
+      const p = P(places[labels + 2 * i], places[labels + 2 * i + 1]);
       if (p) ctx.fillText(f.Name, p[0], p[1]);
     });
     ctx.textAlign = "start";
+    ctx.font = "11px system-ui, sans-serif";
   }
-  // The chosen target list.
-  if (show.dso && pos.length) {
-    ctx.strokeStyle = "rgba(240,200,110,0.8)";
-    ctx.fillStyle = "rgba(240,200,110,0.85)";
+  // The chosen target list: names, catalogue numbers or both.
+  const lp = listPos ?? pos;
+  if (show.dso && lp.length) {
+    ctx.strokeStyle = "rgba(205,210,225,0.75)";
+    ctx.fillStyle = "rgba(200,205,220,0.8)";
     ctx.lineWidth = 1;
     for (let i = 0; i < rows.length; i++) {
-      if (rows[i].Catalog === "Solar System") continue; // drawn below
-      const p = P(pos[2 * i], pos[2 * i + 1]);
+      const r = rows[i];
+      if (r.Catalog === "Solar System") continue; // drawn below
+      const p = P(lp[2 * i], lp[2 * i + 1]);
       if (!p || p[0] < 0 || p[1] < 0 || p[0] > w || p[1] > h) continue;
-      ctx.beginPath();
-      ctx.ellipse(p[0], p[1], 4, 2.5, 0, 0, 2 * Math.PI);
-      ctx.stroke();
-      if (view.fov <= 120) ctx.fillText(rows[i].Name, p[0] + 6, p[1] + 10);
+      symbol(p[0], p[1], r.Type);
+      const cn = commonName(r.Description);
+      const label = [show.dnames && (cn || (!show.dnos && r.Name)), show.dnos && r.Name].filter(Boolean).join(", ");
+      if (label) ctx.fillText(label, p[0] + 7, p[1] + 4);
     }
   }
   if (show.solar) {
     solar.rows.forEach((r, i) => {
       const p = P(solar.pos[2 * i], solar.pos[2 * i + 1]);
       if (!p) return;
-      const moon = r.Type === "Moon";
-      ctx.fillStyle = moon ? "#e8e4d8" : "#f2d48b";
+      const big = r.Type === "Moon" || r.Type === "Sun";
+      ctx.fillStyle = r.Type === "Sun" ? "#ffd54a" : r.Type === "Moon" ? "#e8e4d8" : "#f2d48b";
       ctx.beginPath();
-      // The Moon at its size (0.26° radius; a unit is a radian at the centre).
-      ctx.arc(p[0], p[1], moon ? Math.max(5, (0.26 * Math.PI / 180) * v.scale) : 3.5, 0, 2 * Math.PI);
+      // The Sun and Moon at their size (0.26°; a unit is a radian at the centre).
+      ctx.arc(p[0], p[1], big ? Math.max(6, (0.26 * Math.PI / 180) * v.scale) : 3.5, 0, 2 * Math.PI);
       ctx.fill();
-      ctx.fillText(r.Name, p[0] + 7, p[1] - 6);
+      if (show.pnames) {
+        ctx.fillStyle = "#f2d48b";
+        ctx.fillText(r.Name, p[0] + 8, p[1] - 6);
+      }
     });
   }
-  // The ground: the projection keeps the horizon a circle, the sky inside it
-  // when the view's centre is above the horizon, the ground inside it when
-  // below. Exactly on the horizon the circle is a line, so the centre is
-  // nudged off it for this only.
+  // The horizon mask: the projection keeps the horizon a circle, the sky
+  // inside it when the view's centre is above the horizon. Exactly on the
+  // horizon the circle is a line, so the centre is nudged off it here.
   if (show.ground) {
     const g = { ...v, alt: Math.abs(v.alt) < 0.05 ? (v.alt < 0 ? -0.05 : 0.05) : v.alt };
-    ctx.fillStyle = dark ? "rgba(26,32,22,0.92)" : "rgba(40,52,34,0.92)";
+    ctx.fillStyle = "rgba(30,80,30,0.45)";
     ctx.beginPath();
     for (let az = 0; az <= 360; az++) {
       const p = skyProject(0, az, g, true);
@@ -186,17 +303,21 @@ function paint() {
     ctx.closePath();
     if (g.alt > 0) ctx.rect(0, 0, w, h);
     ctx.fill(g.alt > 0 ? "evenodd" : "nonzero");
-    ctx.strokeStyle = "rgba(150,170,120,0.8)";
+    ctx.strokeStyle = "rgba(120,190,110,0.8)";
     ctx.lineWidth = 1;
     line(Array.from({ length: 361 }, (_, i) => P(0, i)));
   }
-  ctx.fillStyle = "#e8c35a";
-  ctx.font = "bold 13px system-ui, sans-serif";
-  for (const [l, az] of [["N", 0], ["E", 90], ["S", 180], ["W", 270]]) {
-    const p = P(0, az);
-    if (p) ctx.fillText(l, p[0] - 4, p[1] - 6);
+  if (show.cardinal) {
+    ctx.fillStyle = "#7bc96f";
+    ctx.font = "bold 12px system-ui, sans-serif";
+    ctx.textAlign = "center";
+    ["N", "NE", "E", "SE", "S", "SW", "W", "NW"].forEach((l, i) => {
+      const p = P(0, i * 45);
+      if (p) ctx.fillText(l, p[0], p[1] - 6);
+    });
+    ctx.textAlign = "start";
   }
-  // The target, then the telescope's reticle.
+  // The target, then the telescope's reticle (now only).
   const t = targetPlace();
   if (t) {
     const p = P(t[0], t[1]);
@@ -206,10 +327,10 @@ function paint() {
       ctx.strokeRect(p[0] - 9, p[1] - 9, 18, 18);
     }
   }
-  if (lastMount.Alt != null && lastMount.Azm != null) {
+  if (lastMount.Alt != null && lastMount.Azm != null && $("#sky-now").checked) {
     const p = P(deg(lastMount.Alt), deg(lastMount.Azm));
     if (p) {
-      ctx.strokeStyle = accent;
+      ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim() || "#3b82f6";
       ctx.lineWidth = 1.5;
       ctx.beginPath();
       ctx.arc(p[0], p[1], 12, 0, 2 * Math.PI);
@@ -223,9 +344,10 @@ function paint() {
 }
 
 // ---- the target ----
-let typedPlace = null; // AltAzOf for typed coordinates or a chosen star
+let typedPlace = null; // where a chosen star or typed coordinates are
 function targetPlace() {
-  if (selected >= 0 && pos.length) return [pos[2 * selected], pos[2 * selected + 1]];
+  const lp = listPos ?? pos;
+  if (selected >= 0 && lp.length) return [lp[2 * selected], lp[2 * selected + 1]];
   return typedPlace;
 }
 function updateButtons() {
@@ -236,12 +358,12 @@ function updateButtons() {
   $("#sky-goto").disabled = $("#goto").disabled;
   $("#sky-mosaic").disabled = $("#mosaic").disabled;
 }
-// placeTyped finds where a chosen star or typed coordinates are now.
+// placeTyped finds where a chosen star or typed coordinates are.
 async function placeTyped() {
   typedPlace = null;
   if (selected >= 0) return;
   const t = star ? { RA: star.ra, Dec: star.dec } : targetFor(null, $("#ra").value, $("#dec").value);
-  if (t) typedPlace = await act("AltAzOf", t.RA, t.Dec);
+  if (t) typedPlace = await act("AltAzOf", t.RA, t.Dec, at());
 }
 // Coordinates typed by hand replace a chosen star.
 for (const id of ["#ra", "#dec"]) $(id).addEventListener("input", (e) => e.isTrusted && (star = null));
@@ -254,8 +376,7 @@ async function center() {
   if (selected < 0) await placeTyped();
   const t = targetPlace();
   if (!t) return;
-  view.alt = t[0];
-  view.az = t[1];
+  [view.alt, view.az] = t;
   view.fov = Math.min(view.fov, 60);
   draw();
 }
@@ -265,7 +386,7 @@ $("#center-target").onclick = () => { showPane("mp-planetarium"); center(); };
 $("#sky-center-telescope").onclick = () => {
   if (lastMount.Alt == null) return;
   view.alt = deg(lastMount.Alt);
-  view.az = deg(lastMount.Azm);
+  view.az = ((deg(lastMount.Azm) % 360) + 360) % 360;
   view.fov = Math.min(view.fov, 60);
   draw();
 };
@@ -273,7 +394,7 @@ $("#sky-goto").onclick = () => $("#goto").click();
 $("#sky-mosaic").onclick = () => $("#mosaic").click();
 
 // ---- looking around: drag, wheel, buttons ----
-const zoom = (f) => { view.fov = Math.min(Math.max(view.fov * f, 1), 220); draw(); };
+const zoom = (f) => { view.fov = Math.min(Math.max(view.fov * f, 1), 180); draw(); };
 $("#sky-in").onclick = () => zoom(1 / 1.5);
 $("#sky-out").onclick = () => zoom(1.5);
 canvas.addEventListener("wheel", (e) => { e.preventDefault(); zoom(Math.exp(e.deltaY / 400)); }, { passive: false });
@@ -285,8 +406,7 @@ canvas.onpointermove = (e) => {
   if (!drag.moved && Math.hypot(dx, dy) < 4) return;
   drag.moved = true;
   const per = view.fov / Math.min(canvas.clientWidth, canvas.clientHeight); // degrees per pixel at the centre
-  // Turning toward the zenith reverses the azimuth's sense near it.
-  view.az = (((view.az + dx * per / Math.max(Math.cos((view.alt * Math.PI) / 180), 0.25)) % 360) + 360) % 360;
+  view.az = (((view.az + (dx * per) / Math.max(Math.cos((view.alt * Math.PI) / 180), 0.25)) % 360) + 360) % 360;
   view.alt = Math.min(Math.max(view.alt + dy * per, -90), 90);
   drag.x = e.clientX;
   drag.y = e.clientY;
@@ -308,13 +428,11 @@ async function pick(e) {
     const d = Math.hypot(p[0] - x, p[1] - y);
     if (d < max && (!best || d < best.d)) best = { d, what };
   };
-  if (show.dso) rows.forEach((_, i) => pos.length && near(pos[2 * i], pos[2 * i + 1], 10, { row: i }));
-  if (show.solar) solar.rows.forEach((s, i) => near(solar.pos[2 * i], solar.pos[2 * i + 1], 12, { body: s.Name }));
-  if (!best && chart) {
-    const limit = Number($("#sky-mag").value);
-    for (let i = 0; i < chart.Stars.length / 4; i++) {
-      if (chart.Stars[4 * i + 2] <= limit) near(places[2 * i], places[2 * i + 1], 8, { star: i });
-    }
+  const lp = listPos ?? pos;
+  if (show.dso && lp.length) rows.forEach((_, i) => near(lp[2 * i], lp[2 * i + 1], 10, { row: i }));
+  if (show.solar) solar.rows.forEach((s, i) => s.Type !== "Sun" && near(solar.pos[2 * i], solar.pos[2 * i + 1], 12, { body: s.Name }));
+  if (!best && chart && show.stars) {
+    for (let i = 0; i < chart.Stars.length / 4; i++) if (chart.Stars[4 * i + 2] <= 6.5) near(places[2 * i], places[2 * i + 1], 8, { star: i });
   }
   if (!best) return;
   const w = best.what;
@@ -325,7 +443,7 @@ async function pick(e) {
       $("#catalog").value = "Solar System";
       await $("#catalog").onchange();
     }
-    const i = rows.findIndex((r) => r.Name === w.body);
+    const i = rows.findIndex((row) => row.Name === w.body);
     if (i >= 0) select(i);
     return;
   }

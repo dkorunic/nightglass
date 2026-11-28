@@ -284,3 +284,37 @@ func TestFinalView(t *testing.T) {
 		t.Errorf("8-bit final: %d", w.Code)
 	}
 }
+
+// The web client's Mount and Focuser controls: tracking, focuser
+// calibration, and autofocus over the rough range when chosen.
+func TestMountFocuserControls(t *testing.T) {
+	a, _, s := connected(t)
+	setTask(t, a, s, fake.Msg{"State": "IDLE", "IsReady": true})
+	if err := a.SetTracking(false); err != nil {
+		t.Fatal(err)
+	}
+	if m := lastSent(t, s, "Mount", "EnableTracking"); m["Value"] != false {
+		t.Errorf("tracking %v", m)
+	}
+	if err := a.CalibrateFocuser(); err != nil {
+		t.Fatal(err)
+	}
+	lastSent(t, s, "TaskController", "CalibrateFocuser")
+	if err := a.AutoFocus(); err != nil {
+		t.Fatal(err)
+	}
+	if m := lastSent(t, s, "TaskController", "RunInfinityAutoFocus"); m["UseFineFocus"] != true {
+		t.Errorf("fine by default: %v", m)
+	}
+	setSettings(t, a, func(st *Settings) { st.RoughFocus = true })
+	if err := a.AutoFocus(); err != nil {
+		t.Fatal(err)
+	}
+	if m := lastSent(t, s, "TaskController", "RunInfinityAutoFocus"); m["UseFineFocus"] != false {
+		t.Errorf("rough: %v", m)
+	}
+	// A maximum at or under the minimum is refused.
+	if a.SaveSettings(Settings{LatDeg: 45, LonDeg: 16, SlewLimitMinDeg: 30, SlewLimitMaxDeg: 20}) == nil {
+		t.Error("max under min taken")
+	}
+}

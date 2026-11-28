@@ -27,11 +27,13 @@ type SkyStar struct {
 	HR               uint16
 }
 
-// SkyConstellation is a constellation's name, where its name is written
-// and its stick figure as polylines of J2000 RA, Dec pairs in degrees.
+// SkyConstellation is a constellation's name, where its name is written,
+// its stick figure and its boundary as polylines of J2000 RA, Dec pairs in
+// degrees.
 type SkyConstellation struct {
 	Abbr, Name string
 	Lines      [][]float32
+	Bounds     [][]float32 // its boundary, closed, likewise
 	RA, Dec    float32
 }
 

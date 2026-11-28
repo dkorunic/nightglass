@@ -29,8 +29,10 @@ async function renderOrigin(cached = false) {
   $("#reinit").disabled = !o.Idle;
   show(f.ledring, o.LedRing != null ? Math.round(o.LedRing * 100) : null, o.LedRing != null && o.Known);
   show(f.mountled, o.MountLed != null ? Math.round(o.MountLed * 100) : null, o.MountLed != null && o.Known);
-  show(f.otafan, o.OtaFan, o.OtaFan != null && o.Known);
-  show(f.cpufan, o.CpuFan, o.CpuFan != null && o.Known);
+  // The fans as On/Off pairs, as the web client's.
+  for (const [list, on] of [[f.otafan, o.OtaFan], [f.cpufan, o.CpuFan]]) {
+    for (const r of list) { r.checked = on != null && (r.value === "on") === !!on; r.disabled = !(on != null && o.Known); }
+  }
   show(f.tempaf, o.TempAutofocus, o.TempAutofocus != null && o.Known);
   show(f.threshold, o.TempThresholdC, o.Known && !!o.TempAutofocus && o.TempThresholdC != null);
   $("#threshold-label").textContent = o.TempThresholdC != null ? `${Math.trunc(o.TempThresholdC)} °C` : "";
@@ -113,8 +115,8 @@ document.addEventListener("input", (e) => e.target.form?.id === "origin-form" &&
   f.wedge.onchange = () => change("SetWedge", f.wedge.checked);
   f.ledring.onchange = () => change("SetLedRing", f.ledring.value / 100);
   f.mountled.onchange = () => change("SetMountLed", f.mountled.value / 100);
-  f.otafan.onchange = () => change("SetFan", "Telescope", f.otafan.checked);
-  f.cpufan.onchange = () => change("SetFan", "CPU", f.cpufan.checked);
+  for (const r of f.otafan) r.onchange = () => change("SetFan", "Telescope", r.value === "on");
+  for (const r of f.cpufan) r.onchange = () => change("SetFan", "CPU", r.value === "on");
   f.tempaf.onchange = () => change("SetTempAutofocus", f.tempaf.checked, -1);
   f.threshold.oninput = () => ($("#threshold-label").textContent = `${f.threshold.value} °C`);
   f.threshold.onchange = () => change("SetTempAutofocus", true, Number(f.threshold.value));

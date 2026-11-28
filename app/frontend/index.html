@@ -69,22 +69,41 @@
         <!-- What the Planetarium shows, and for where and when. -->
         <section id="cp-planetarium" class="pane active" role="tabpanel">
           <h2 class="pane-heading">Planetarium</h2>
+          <!-- Where the sky is seen from: Nightglass's own location and time zone. -->
           <div class="section">
-            <dl class="info">
-              <dt>Location</dt><dd id="sky-place">–</dd>
-              <dt>Time</dt><dd id="sky-time">–</dd>
-            </dl>
+            <div class="section-title">Location</div>
+            <div class="row"><span class="ctl-label">Longitude</span><input id="sky-lon" size="11">
+              <label class="check"><input name="sky-ew" type="radio" value="E"> E</label>
+              <label class="check"><input name="sky-ew" type="radio" value="W"> W</label></div>
+            <div class="row"><span class="ctl-label">Latitude</span><input id="sky-lat" size="11">
+              <label class="check"><input name="sky-ns" type="radio" value="N"> N</label>
+              <label class="check"><input name="sky-ns" type="radio" value="S"> S</label></div>
+            <label class="field">Time Zone<input id="sky-zone" list="zones"></label>
+            <dl class="info"><dt>UTC Offset</dt><dd id="sky-utc">–</dd></dl>
           </div>
           <div class="section">
-            <div class="section-title">Show</div>
-            <label class="check"><input type="checkbox" data-sky="lines" checked> Constellation Lines</label>
-            <label class="check"><input type="checkbox" data-sky="cnames" checked> Constellation Names</label>
-            <label class="check"><input type="checkbox" data-sky="snames" checked> Star Names</label>
-            <label class="check"><input type="checkbox" data-sky="dso" checked> Target List Objects</label>
-            <label class="check"><input type="checkbox" data-sky="solar" checked> Moon and Planets</label>
-            <label class="check"><input type="checkbox" data-sky="grid" checked> Alt/Az Grid</label>
-            <label class="check"><input type="checkbox" data-sky="ground" checked> Ground</label>
-            <label class="ctl">Faintest Stars<input id="sky-mag" type="range" min="2" max="6.5" step="0.5" value="6"><span id="sky-mag-val">6.0</span></label>
+            <div class="section-title">Date &amp; Time</div>
+            <label class="field">Local Date<input id="sky-date" type="date"></label>
+            <label class="field">Local Time<input id="sky-time" type="time" step="1"></label>
+            <label class="check"><input id="sky-now" type="checkbox" checked> Use Local System Time</label>
+          </div>
+          <div class="section">
+            <div class="section-title">Field of View</div>
+            <label class="field">Azimuth<input id="sky-az" type="number" step="any" min="0" max="360"></label>
+            <label class="field">Altitude<input id="sky-alt" type="number" step="any" min="-90" max="90"></label>
+            <label class="field">Field Width<input id="sky-width" type="number" step="any" min="1" max="180"></label>
+          </div>
+          <div class="section">
+            <div class="section-title">Display Options</div>
+            <div class="sky-opts">
+              <label class="check"><input type="checkbox" data-sky="stars" checked> Stars</label><label class="check"><input type="checkbox" data-sky="snames" checked> Names</label><label class="check"><input type="checkbox" data-sky="snos"> Catalog Nos.</label>
+              <label class="check"><input type="checkbox" data-sky="solar" checked> Planets</label><label class="check"><input type="checkbox" data-sky="pnames" checked> Names</label><span></span>
+              <label class="check"><input type="checkbox" data-sky="dso" checked> Deep Sky Objects</label><label class="check"><input type="checkbox" data-sky="dnames" checked> Names</label><label class="check"><input type="checkbox" data-sky="dnos"> Catalog Nos.</label>
+              <label class="check"><input type="checkbox" data-sky="ground" checked> Horizon Mask</label><label class="check"><input type="checkbox" data-sky="cardinal" checked> Labels</label><label class="check"><input type="checkbox" data-sky="meridian"> Meridian</label>
+              <label class="check"><input type="checkbox" data-sky="lines" checked> Constellations</label><label class="check"><input type="checkbox" data-sky="cnames" checked> Names</label><label class="check"><input type="checkbox" data-sky="bounds"> Boundaries</label>
+              <label class="check"><input type="checkbox" data-sky="grid"> Coordinate Grid</label><label class="check"><input type="radio" name="sky-grid" value="eq" checked> Equatorial</label><label class="check"><input type="radio" name="sky-grid" value="hz"> Horizon</label>
+              <label class="check"><input type="checkbox" data-sky="equator"> Equator</label><label class="check"><input type="checkbox" data-sky="ecliptic" checked> Ecliptic</label><span></span>
+            </div>
           </div>
           <p class="view-note">Click an object to make it the target. Drag to look around, scroll or −/+ to zoom.</p>
         </section>
@@ -214,6 +233,7 @@
             <dl class="info">
               <dt>Charge</dt><dd id="st-battery">-</dd>
               <dt>Voltage</dt><dd id="st-voltage">-</dd>
+              <dt>Current</dt><dd id="st-bcurrent">-</dd>
               <dt>Temperature</dt><dd id="st-btemp">-</dd>
               <dt>Charger</dt><dd id="st-charger">-</dd>
             </dl>
@@ -236,17 +256,25 @@
           </div>
           <div class="section">
             <div class="section-title">Motor Control <small>(arrow keys)</small></div>
-            <div class="pad">
-              <span></span><button class="needs-conn" data-alt="1" data-azm="0">▲</button><span></span>
-              <button class="needs-conn" data-alt="0" data-azm="-1">◀</button>
-              <button class="needs-conn btn-danger" id="slew-stop">■</button>
-              <button class="needs-conn" data-alt="0" data-azm="1">▶</button>
-              <span></span><button class="needs-conn" data-alt="-1" data-azm="0">▼</button><span></span>
+            <div class="motor">
+              <div class="pad">
+                <span></span><button class="needs-conn" data-alt="1" data-azm="0">▲</button><span></span>
+                <button class="needs-conn" data-alt="0" data-azm="-1">◀</button>
+                <button class="needs-conn btn-danger" id="slew-stop">■</button>
+                <button class="needs-conn" data-alt="0" data-azm="1">▶</button>
+                <span></span><button class="needs-conn" data-alt="-1" data-azm="0">▼</button><span></span>
+              </div>
+              <div class="motor-btns">
+                <button id="mnt-goto" class="btn-primary" disabled>Goto Target</button>
+                <button id="mnt-goto-coords" class="needs-conn" disabled>Goto Coords</button>
+                <!-- Stop and HaltTasks, as the web client's; not while imaging
+                     (Finish or Cancel end a run with its image). -->
+                <button id="halt" class="needs-conn btn-danger">Stop Slewing</button>
+              </div>
             </div>
             <!-- The web client's rate: the Origin's own rates 1–9 on a slider. -->
             <div class="rate-row"><span>Rate</span>
               <input id="rate" type="range" min="1" max="9" step="1" value="9"><span id="rate-val">9</span></div>
-            <div class="row"><button id="halt" class="needs-conn btn-danger">Halt all tasks</button></div>
           </div>
           <div class="section">
             <div class="section-title">Position and Alignment</div>
@@ -261,6 +289,21 @@
               <dt>Latitude</dt><dd id="st-lat">-</dd>
               <dt>Longitude</dt><dd id="st-lon">-</dd>
             </dl>
+            <!-- The web client's Recenter: Reframe, a click on the live view. -->
+            <div class="grid2"><button id="recenter" class="needs-conn">Recenter</button></div>
+          </div>
+          <div class="section">
+            <div class="section-title">Tracking and Slew Limits</div>
+            <div class="row"><label class="check"><input id="tracking" type="checkbox" class="needs-conn" disabled> Enable Sidereal Tracking</label>
+              <span class="grow"></span><span id="tracking-state">(OFF)</span></div>
+            <label class="ctl">Min Altitude<input id="slew-min" type="range" min="0" max="89" value="0"><span id="slew-min-val">0°</span></label>
+            <label class="ctl">Max Altitude<input id="slew-max" type="range" min="1" max="90" value="90"><span id="slew-max-val">90°</span></label>
+          </div>
+          <div class="section">
+            <div class="section-title">Dithering</div>
+            <label class="check"><input id="dither" type="checkbox"> Dither while imaging</label>
+            <label class="field">Dither After Every (frames)<input id="dither-interval" type="number" min="1" max="10" step="1"></label>
+            <label class="ctl">Dither Distance<input id="dither-distance" type="range" min="1" max="25"><span id="dither-distance-val"></span></label>
           </div>
           <div class="section">
             <div class="section-title">StarSense Autoguider</div>
@@ -378,8 +421,19 @@
         <section id="cp-focuser" class="pane" role="tabpanel">
           <h2 class="pane-heading">Focuser</h2>
           <div class="section">
-            <dl class="info"><dt><span id="focus-label">Focuser Position</span></dt><dd id="st-focus">-</dd></dl>
-            <p><button id="focus-value" class="needs-conn focus-ctl value-btn" title="Set the focuser position">–</button></p>
+            <dl class="info">
+              <dt><span id="focus-label">Position</span></dt><dd id="st-focus">-</dd>
+              <dt>Velocity</dt><dd id="st-fvel">-</dd>
+            </dl>
+            <div class="row"><button id="focus-moveto" class="needs-conn focus-ctl">Move To</button>
+              <input id="focus-pos" type="number" step="1" class="grow"></div>
+            <!-- Hold to run the focuser (Focuser/Move) at the rate. -->
+            <div class="grid2">
+              <button class="needs-conn focus-ctl" data-jog="3" title="Hold to move the focuser in">Move In</button>
+              <button class="needs-conn focus-ctl" data-jog="-3" title="Hold to move the focuser out">Move Out</button>
+            </div>
+            <label class="ctl">Rate<input id="focus-rate" type="range" min="1" max="3" step="1" value="3"><span id="focus-rate-val">3</span></label>
+            <!-- The app's steps from the shown position, and its position dialog. -->
             <div class="steps">
               <button class="needs-conn focus-ctl" data-step="-2">−100</button>
               <button class="needs-conn focus-ctl" data-step="-1">−10</button>
@@ -388,18 +442,21 @@
               <button class="needs-conn focus-ctl" data-step="1">+10</button>
               <button class="needs-conn focus-ctl" data-step="2">+100</button>
             </div>
-            <!-- Hold to run the focuser (Focuser/Move, Celestron's web app's Move In/Out). -->
-            <div class="grid2">
-              <button class="needs-conn focus-ctl" data-jog="2" title="Hold to move the focuser in">Move In</button>
-              <button class="needs-conn focus-ctl" data-jog="-2" title="Hold to move the focuser out">Move Out</button>
-            </div>
+            <button id="focus-value" class="needs-conn focus-ctl value-btn" hidden>–</button>
           </div>
           <div class="section">
             <div class="section-title">Autofocus</div>
-            <div class="row"><button class="needs-conn focus-ctl btn-primary" id="autofocus">Infinity Autofocus</button></div>
+            <div class="row"><button class="needs-conn focus-ctl" id="autofocus">Infinity Autofocus</button>
+              <label class="check"><input name="af-range" type="radio" value="fine"> Fine</label>
+              <label class="check"><input name="af-range" type="radio" value="rough"> Rough</label></div>
             <label class="check"><input name="gotoaf" form="origin-form" class="needs-conn" type="checkbox"> Autofocus After Goto Any Object</label>
             <label class="check"><input name="tempaf" form="origin-form" class="needs-conn" type="checkbox"> Autofocus On Temperature Change</label>
             <label class="ctl">Change After<input name="threshold" form="origin-form" class="needs-conn" type="range" min="1" max="10"><span id="threshold-label"></span></label>
+          </div>
+          <div class="section">
+            <div class="section-title">Calibration</div>
+            <div class="grid2"><button id="calibrate-focuser" class="needs-conn">Calibrate Focuser</button></div>
+            <dl class="info"><dt>Min Position</dt><dd id="st-fmin">-</dd><dt>Max Position</dt><dd id="st-fmax">-</dd></dl>
           </div>
         </section>
 
@@ -407,7 +464,9 @@
           <h2 class="pane-heading">Environment</h2>
           <div class="section">
             <dl class="info"><dt>CPU Temp</dt><dd id="st-cputemp">-</dd></dl>
-            <label class="check"><input name="cpufan" form="origin-form" class="needs-conn" type="checkbox"> CPU Fan</label>
+            <div class="row"><span class="ctl-label">CPU Fan</span>
+              <label class="check"><input name="cpufan" form="origin-form" class="needs-conn" type="radio" value="on"> On</label>
+              <label class="check"><input name="cpufan" form="origin-form" class="needs-conn" type="radio" value="off"> Off</label></div>
           </div>
           <div class="section">
             <div class="section-title">Dew Heater</div>
@@ -418,7 +477,9 @@
               <dt>OTA Temp</dt><dd id="st-otatemp">-</dd>
               <dt>Heater</dt><dd id="st-dew">-</dd>
             </dl>
-            <label class="check"><input name="otafan" form="origin-form" class="needs-conn" type="checkbox"> OTA Fan</label>
+            <div class="row"><span class="ctl-label">OTA Fan</span>
+              <label class="check"><input name="otafan" form="origin-form" class="needs-conn" type="radio" value="on"> On</label>
+              <label class="check"><input name="otafan" form="origin-form" class="needs-conn" type="radio" value="off"> Off</label></div>
             <div class="row"><span class="ctl-label">Heater Mode</span>
               <label class="check"><input name="dewmode" form="origin-form" class="needs-conn" type="radio" value="Auto"> Auto</label>
               <label class="check"><input name="dewmode" form="origin-form" class="needs-conn" type="radio" value="Manual"> Manual</label></div>
@@ -494,18 +555,16 @@
           <!-- The web client's Final Image: the last final image, stretched
                here on the computer (the Origin's stretch is unchanged). -->
           <div id="final-viewer">
-            <div class="toolbar">
-              <p id="final-info" class="grow"></p>
-              <button id="final-save" disabled>Save final image again</button>
-              <button id="open-saved">Saved Images</button>
-            </div>
             <div class="frame-box" id="final-view-box">
+              <p id="final-info"></p>
               <img id="final-frame" alt="" hidden>
               <p id="final-empty">Final stacked master images will appear here. Start stacking in the Camera tab to make one.</p>
             </div>
             <div class="lv-controls">
               <span class="lv-zoom"><button id="fz-out" title="Zoom out">−</button>
                 <span id="fz-label">1×</span><button id="fz-in" title="Zoom in">+</button></span>
+              <button id="final-save" disabled>Save Again</button>
+              <button id="open-saved">Saved Images</button>
               <span class="lv-sep"></span>
               <span class="lv-field">X: <b id="fpx-x">—</b></span>
               <span class="lv-field">Y: <b id="fpx-y">—</b></span>
@@ -580,10 +639,12 @@
 
         <section id="mp-mosaics" class="pane view-pane" role="tabpanel">
           <dialog id="mosaics-dialog">
-            <h2>Mosaic Capture Sets</h2>
+            <div class="view-bar"><h2>New Mosaic</h2></div>
+            <p class="view-note">Use "Capture Mosaic" in the Planetarium tab to start a new mosaic.</p>
+            <div class="view-bar"><h2>Previous Mosaics</h2></div>
             <ul id="mosaics-list"></ul>
-            <p id="mosaics-empty" hidden>No Mosaics</p>
-            <h2>Composition</h2>
+            <p id="mosaics-empty" class="view-note" hidden>No previous mosaics.</p>
+            <div class="view-bar"><h2>Composition</h2></div>
             <label class="check"><input name="mosaicflatten" form="origin-form" type="checkbox"> Flatten Backgrounds</label>
             <label class="check"><input name="mosaicnormalize" form="origin-form" type="checkbox"> Normalize Backgrounds</label>
             <label class="check"><input name="mosaicequalize" form="origin-form" type="checkbox"> Equalize Noise</label>
@@ -644,7 +705,6 @@
       <label>Longitude ° (east +)<input name="LonDeg" type="number" step="any" min="-180" max="180" required></label>
       <label>Time zone<input name="TimeZone" list="zones" required></label>
       <datalist id="zones"></datalist>
-      <label>Lowest go-to altitude °<input name="SlewLimitMinDeg" type="number" step="1" min="0" max="89"></label>
       <fieldset>
         <legend>Camera</legend>
         <label class="check"><input name="ManualImaging" type="checkbox"> Manual exposure and ISO (else the Origin chooses)</label>
@@ -657,9 +717,6 @@
         <legend>Imaging</legend>
         <label class="check"><input name="SaveRaw" type="checkbox"> Save Raw Images</label>
         <label class="check"><input name="StopOnPlateSolveFail" type="checkbox"> Stop imaging if plate solve fails</label>
-        <label class="check"><input name="Dither" type="checkbox"> Dithering</label>
-        <label>Dither Amount (pixels)<input name="DitherDistance" type="range" min="1" max="30"> <span data-val="DitherDistance"></span></label>
-        <label>Dither Frequency (frames)<input name="DitherInterval" type="range" min="1" max="10"> <span data-val="DitherInterval"></span></label>
       </fieldset>
       <fieldset>
         <legend>Display</legend>

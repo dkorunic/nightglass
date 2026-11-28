@@ -61,6 +61,7 @@ type Settings struct {
 	ISO                 int     // manual ISO (1000 by default, as the web client); 0 is the camera's default
 	SnapshotExposureSec float64 // snapshot (manual live view) exposure, 10 s by default as the web client
 	SlewLimitMinDeg     float64 // scopeCESlewLimitMin: lowest go-to altitude
+	SlewLimitMaxDeg     float64 // the web client's Max Altitude: highest go-to altitude; 0: none
 	// SlewSpeed is the Origin's manual rate, 1–9, as Celestron's web client's
 	// slider (9 by default). It replaces the app's 1–4 "SlewRate", whose
 	// saved values would mean other speeds now, so old files get the default.
@@ -101,6 +102,9 @@ type Settings struct {
 	// Calibrate applies darks and flats to a single capture ("Calibrate with
 	// Darks and Flats", on by default as the web client's).
 	Calibrate bool
+	// RoughFocus autofocuses over the rough range (the web client's Rough;
+	// Fine, its default, otherwise).
+	RoughFocus bool
 	// The web client's Schedules options, off by default as its own.
 	ScheduleAutofocus, SchedulePowerDown bool
 	StopOnPlateSolveFail                 bool // stop imaging when plate solving fails
@@ -163,6 +167,9 @@ func (s Settings) Validate() error {
 	}
 	if s.SlewLimitMinDeg < 0 || s.SlewLimitMinDeg >= 90 {
 		errs = append(errs, fmt.Errorf("minimum slew altitude %v outside 0–90°", s.SlewLimitMinDeg))
+	}
+	if s.SlewLimitMaxDeg < 0 || s.SlewLimitMaxDeg > 90 || (s.SlewLimitMaxDeg > 0 && s.SlewLimitMaxDeg <= s.SlewLimitMinDeg) {
+		errs = append(errs, fmt.Errorf("maximum slew altitude %v outside %v–90°", s.SlewLimitMaxDeg, s.SlewLimitMinDeg))
 	}
 	if s.SlewSpeed < 0 || s.SlewSpeed > 9 {
 		errs = append(errs, fmt.Errorf("slew speed %d outside 1–9", s.SlewSpeed))
@@ -249,6 +256,9 @@ func repair(s Settings) Settings {
 	}
 	if s.ISO < 0 {
 		s.ISO = d.ISO
+	}
+	if s.SlewLimitMaxDeg < 0 || s.SlewLimitMaxDeg > 90 || (s.SlewLimitMaxDeg > 0 && s.SlewLimitMaxDeg <= s.SlewLimitMinDeg) {
+		s.SlewLimitMaxDeg = 0
 	}
 	if s.SlewLimitMinDeg < 0 || s.SlewLimitMinDeg >= 90 {
 		s.SlewLimitMinDeg = d.SlewLimitMinDeg

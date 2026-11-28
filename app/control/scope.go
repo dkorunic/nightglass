@@ -178,8 +178,8 @@ func (a *App) GotoBody(name string) error {
 }
 
 // Goto slews to a J2000 position (degrees). Like the native
-// SlewCelestronOrigin it refuses only a target below the minimum slew
-// altitude (TEL_OUTSIDE_SLEW_LIMITS); there is no upper limit.
+// SlewCelestronOrigin it refuses a target below the minimum slew altitude
+// (TEL_OUTSIDE_SLEW_LIMITS), and one above the web client's maximum when set.
 func (a *App) Goto(ra, dec float64) error {
 	c, err := a.cl()
 	if err != nil {
@@ -194,7 +194,7 @@ func (a *App) Goto(ra, dec float64) error {
 	switch alt, _ := catalog.AltAz(ra, dec, a.now(), s.LatDeg, s.LonDeg); {
 	case alt < 0:
 		return errors.New("alert:Command Failure: The scope can't slew to the target coordinates because they are below the horizon.")
-	case alt < s.SlewLimitMinDeg:
+	case alt < s.SlewLimitMinDeg, s.SlewLimitMaxDeg > 0 && alt > s.SlewLimitMaxDeg:
 		return errors.New("alert:Command Failure: The scope can't slew to the target coordinates because they are outside the user defined slew limits.")
 	}
 	if err := c.GotoRaDec(context.Background(), ra, dec); errors.Is(err, origin.ErrImaging) {
@@ -748,7 +748,7 @@ func (a *App) AutoFocus() error {
 		// From the shown position, clamped to the limits (FocusOptionsFragment).
 		l := a.FocusLimits()
 
-		return c.AutoFocus(context.Background(), false, min(max(fs.Position, l.Min), l.Max))
+		return c.InfinityAutoFocus(context.Background(), min(max(fs.Position, l.Min), l.Max), !a.Settings().RoughFocus)
 	})
 }
 

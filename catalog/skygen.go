@@ -5,12 +5,13 @@
 
 // skygen packs the Planetarium's sky into catalog/sky.gob:
 //
-//	go run catalog/skygen.go -bsc bsc5.dat -lines constellations.lines.json -names constellations.json
+//	go run catalog/skygen.go -bsc bsc5.dat -lines constellations.lines.json -names constellations.json \
+//		-bounds constellations.bounds.json
 //
 // Sources (see catalog/SKY-NOTICE.md): the Yale Bright Star Catalogue, 5th
 // revised edition (Hoffleit & Warren 1991, NASA ADC / CDS V/50; public
 // domain), e.g. http://tdc-www.harvard.edu/catalogs/bsc5.dat.gz; and the
-// constellation lines and name positions of d3-celestial (Olaf Frohn, BSD
+// constellation lines, name positions and boundaries of d3-celestial (Olaf Frohn, BSD
 // 3-Clause, after the IAU's constellation charts),
 // https://github.com/ofrohn/d3-celestial/tree/master/data.
 package main
@@ -37,6 +38,7 @@ type skyConstellation struct {
 	Abbr, Name string
 	RA, Dec    float32
 	Lines      [][]float32 // RA, Dec pairs in degrees, J2000
+	Bounds     [][]float32 // its boundary, closed, likewise
 }
 type sky struct {
 	Stars          []skyStar
@@ -47,6 +49,7 @@ func main() {
 	bsc := flag.String("bsc", "bsc5.dat", "Yale Bright Star Catalogue, bsc5.dat")
 	lines := flag.String("lines", "constellations.lines.json", "d3-celestial constellations.lines.json")
 	names := flag.String("names", "constellations.json", "d3-celestial constellations.json")
+	bounds := flag.String("bounds", "constellations.bounds.json", "d3-celestial constellations.bounds.json")
 	out := flag.String("out", "catalog/sky.gob", "output")
 	flag.Parse()
 
@@ -55,7 +58,7 @@ func main() {
 	if s.Stars, err = readBSC(*bsc); err != nil {
 		log.Fatal(err)
 	}
-	if s.Constellations, err = readConstellations(*lines, *names); err != nil {
+	if s.Constellations, err = readConstellations(*lines, *names, *bounds); err != nil {
 		log.Fatal(err)
 	}
 	f, err := os.Create(*out)
@@ -148,7 +151,7 @@ func readBSC(path string) ([]skyStar, error) {
 // readConstellations joins the lines (MultiLineString) and the names and
 // label positions (Point), keyed by abbreviation. GeoJSON longitude is RA
 // folded to −180…180°.
-func readConstellations(linesPath, namesPath string) ([]skyConstellation, error) {
+func readConstellations(linesPath, namesPath, boundsPath string) ([]skyConstellation, error) {
 	type feature struct {
 		ID         string
 		Properties struct{ Name string }
@@ -181,6 +184,45 @@ func readConstellations(linesPath, namesPath string) ([]skyConstellation, error)
 	if err != nil {
 		return nil, err
 	}
+	bounds, err := read(boundsPath)
+	if err != nil {
+		return nil, err
+	}
+	// Boundaries run along parallels and meridians: points every 2° keep a
+	// long edge on its arc once projected.
+	dense := func(ring [][2]float64) []float32 {
+		var out []float32
+		for i, p := range ring {
+			out = append(out, ra(p[0]), float32(p[1]))
+			if i+1 == len(ring) {
+				break
+			}
+			q := ring[i+1]
+			dl := q[0] - p[0]
+			if dl > 180 {
+				dl -= 360
+			} else if dl < -180 {
+				dl += 360
+			}
+			n := int(math.Max(math.Abs(dl), math.Abs(q[1]-p[1])) / 2)
+			for k := 1; k < n; k++ {
+				f := float64(k) / float64(n)
+				out = append(out, ra(math.Mod(p[0]+f*dl+540, 360)-180), float32(p[1]+f*(q[1]-p[1])))
+			}
+		}
+
+		return out
+	}
+	boundsByID := map[string][][]float32{}
+	for _, f := range bounds {
+		var poly [][][2]float64
+		if err := json.Unmarshal(f.Geometry.Coordinates, &poly); err != nil {
+			return nil, fmt.Errorf("%s bounds: %w", f.ID, err)
+		}
+		for _, ring := range poly {
+			boundsByID[f.ID] = append(boundsByID[f.ID], dense(ring))
+		}
+	}
 	byID := map[string][][][2]float64{}
 	for _, f := range lines {
 		var ml [][][2]float64
@@ -201,6 +243,7 @@ func readConstellations(linesPath, namesPath string) ([]skyConstellation, error)
 		var ls [][][2]float64
 		if !seen[f.ID] {
 			ls = byID[f.ID]
+			c.Bounds = boundsByID[f.ID]
 		}
 		seen[f.ID] = true
 		for _, l := range ls {

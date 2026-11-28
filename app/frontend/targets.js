@@ -567,3 +567,30 @@ export function starColor(bv) {
   const lerp = (p, q) => Math.round(p + (q - p) * t);
   return `rgb(${lerp(170, 255)},${lerp(195, 170)},${lerp(255, 110)})`;
 }
+
+// commonName is a target's common name from its description, "" when it
+// has none, as Go's catalog.CommonName: the first comma-separated part
+// left once its leading designations are taken off.
+const DESIGNATION = /^[A-Za-z]{1,8}\d?[ -]?\d[\w.+-]*\s*/;
+export function commonName(description) {
+  for (let p of (description ?? "").split(",")) {
+    p = p.trim();
+    for (let m; (m = DESIGNATION.exec(p)); ) p = p.slice(m[0].length).trim();
+    if (/[A-Za-z]/.test(p)) return p;
+  }
+  return "";
+}
+// zoneOffset is a time zone's offset from UTC at an instant, in minutes.
+export function zoneOffset(ms, zone) {
+  const f = new Intl.DateTimeFormat("en-US", { timeZone: zone, hourCycle: "h23", year: "numeric", month: "numeric", day: "numeric", hour: "numeric", minute: "numeric", second: "numeric" });
+  const p = Object.fromEntries(f.formatToParts(new Date(ms)).map((x) => [x.type, Number(x.value)]));
+  return Math.round((Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second) - Math.floor(ms / 1000) * 1000) / 60000);
+}
+// zonedTime is the instant a local date ("YYYY-MM-DD") and time
+// ("hh:mm[:ss]") are in a time zone.
+export function zonedTime(date, time, zone) {
+  const [y, mo, d] = date.split("-").map(Number), [h, mi, s = 0] = time.split(":").map(Number);
+  const local = Date.UTC(y, mo - 1, d, h, mi, s);
+  const first = local - zoneOffset(local, zone) * 60000;
+  return local - zoneOffset(first, zone) * 60000; // again, across a change of offset
+}

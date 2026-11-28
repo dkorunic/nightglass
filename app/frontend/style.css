@@ -358,3 +358,25 @@ label.ctl.num input:last-child { width: 100%; font-family: var(--font-mono); }
 #sky-nav button:not(.lv-zoom button) { padding: 3px 10px; font-size: var(--fs-xs); }
 #sky-fov { min-width: 76px; text-align: center; font-weight: 600; color: var(--text); }
 #sky-target { font-family: inherit; }
+
+/* ---- Mount: the pad with its go-to buttons beside it, as the web client's ---- */
+.motor { display: flex; gap: 10px; align-items: center; margin: 4px 0 8px; }
+.motor .pad { margin: 0; }
+.motor-btns { flex: 1; display: grid; gap: 6px; }
+.motor-btns button { height: 38px; font-weight: 600; font-size: var(--fs-xs); }
+#tracking-state { font-family: var(--font-mono); font-size: var(--fs-sm); color: var(--text-2); }
+
+/* ---- Planetarium: the display options in three columns ---- */
+.sky-opts { display: grid; grid-template-columns: 1.4fr 1fr 1.1fr; gap: 2px 6px; }
+#ctrl-content .sky-opts label.check { margin: 3px 0; font-size: var(--fs-xs); }
+#cp-planetarium .row input:not([type]) { width: 8.5em; font-family: var(--font-mono); }
+
+/* ---- Final Image: its details over the image; buttons in the strip ---- */
+#final-info { position: absolute; top: 8px; left: 12px; margin: 0; z-index: 1; font-size: var(--fs-sm);
+              color: #cbd5e1; text-shadow: 0 1px 2px #000; pointer-events: none; }
+.lv-controls > button { padding: 3px 10px; font-size: var(--fs-xs); }
+#cp-planetarium .row .ctl-label { width: 5.5em; }
+#cp-planetarium .row { flex-wrap: nowrap; }
+#cp-planetarium .row label.check { margin: 0 0 0 4px; }
+#cp-focuser .row label.check { margin: 0 0 0 6px; }
+#cp-focuser .row { flex-wrap: nowrap; }

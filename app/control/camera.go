@@ -163,3 +163,26 @@ func (a *App) FactoryReset() error {
 
 	return nil
 }
+
+// SetTracking switches sidereal tracking (Mount/EnableTracking, the web
+// client's "Enable Sidereal Tracking").
+func (a *App) SetTracking(on bool) error {
+	return a.set("Mount", "EnableTracking", map[string]any{"Value": on}, "GetStatus")
+}
+
+// CalibrateFocuser finds the focuser's travel (TaskController/
+// CalibrateFocuser, the web client's Calibrate Focuser), while idle;
+// HaltTasks stops it.
+func (a *App) CalibrateFocuser() error {
+	return a.with(func(c *origin.Client) error {
+		if err := idle(c); err != nil {
+			return err
+		}
+		ctx := context.Background()
+		if _, err := c.Send(ctx, "TaskController", "CalibrateFocuser", nil); err != nil {
+			return err
+		}
+
+		return c.Post(ctx, "Focuser", "GetPositionLimits", nil)
+	})
+}

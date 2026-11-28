@@ -4,7 +4,7 @@
 // Run: node --test app/frontend/targets.test.mjs
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { CROP_RATIOS, celsius, composeButton, mosaicAction, mosaicDetail, mosaicSize, shareExposure, tileKind, tileStatus, adjustPixels, batteryPercent, batteryText, cameraLocks, canCancel, canFinish, captureLabel, chargerText, cropRect, darkMessage, dewText, dms, fileStatus, filterLabel, focusSteps, gotoMode, guiderText, isImagingState, key, latLon, offsetIn, polarText, prepare, reframeText, serial, sexa, sliderEdit, stretchEnabled, stretchLabel, targetFor, updateButton, updateText, view, zoomAt , polarOffset, angle, clock, calendar, tonightRows, imageStats, wifiMode, wifiBars, wifiSecurity, exposureAt, exposurePos, isoAt, isoPos, exposureText, visibilityText, scheduleStarts, byVisibility, zoneClock, skyProject, skyScale, starRadius, starColor } from "./targets.js";
+import { CROP_RATIOS, celsius, composeButton, mosaicAction, mosaicDetail, mosaicSize, shareExposure, tileKind, tileStatus, adjustPixels, batteryPercent, batteryText, cameraLocks, canCancel, canFinish, captureLabel, chargerText, cropRect, darkMessage, dewText, dms, fileStatus, filterLabel, focusSteps, gotoMode, guiderText, isImagingState, key, latLon, offsetIn, polarText, prepare, reframeText, serial, sexa, sliderEdit, stretchEnabled, stretchLabel, targetFor, updateButton, updateText, view, zoomAt , polarOffset, angle, clock, calendar, tonightRows, imageStats, wifiMode, wifiBars, wifiSecurity, exposureAt, exposurePos, isoAt, isoPos, exposureText, visibilityText, scheduleStarts, byVisibility, zoneClock, skyProject, skyScale, starRadius, starColor, commonName, zoneOffset, zonedTime } from "./targets.js";
 
 test("sexa", () => {
   assert.equal(sexa("5 35 17"), 5 + 35 / 60 + 17 / 3600);
@@ -379,4 +379,15 @@ test("planetarium projection", () => {
   assert.ok(Math.abs(x0) < 1e-9);
   assert.ok(starRadius(-1.5, 180) > starRadius(6, 180));
   assert.equal(starColor(-0.3), "rgb(170,195,255)");
+});
+
+test("planetarium names and zoned times", () => {
+  assert.equal(commonName("NGC 224 Andromeda Galaxy"), "Andromeda Galaxy");
+  assert.equal(commonName("NGC 7023, Iris Nebula"), "Iris Nebula");
+  assert.equal(commonName("NGC 6341"), "");
+  assert.equal(zoneOffset(Date.UTC(2026, 0, 15), "Europe/Zagreb"), 60);
+  assert.equal(zoneOffset(Date.UTC(2026, 6, 15), "Europe/Zagreb"), 120);
+  assert.equal(zonedTime("2026-07-15", "22:30", "Europe/Zagreb"), Date.UTC(2026, 6, 15, 20, 30));
+  assert.equal(zonedTime("2026-01-15", "05:00:30", "America/Chicago"), Date.UTC(2026, 0, 15, 11, 0, 30));
+  assert.equal(zonedTime("2026-11-28", "12:00", "UTC"), Date.UTC(2026, 10, 28, 12));
 });
