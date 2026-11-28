@@ -16,7 +16,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"os"
 	"strings"
 	"sync"
 
@@ -100,31 +99,21 @@ func get(ctx context.Context, hc *http.Client, host, location string) (*http.Res
 	return resp, nil
 }
 
-// FetchToFile streams a file the telescope serves into dst, through
-// dst+".part" so a broken download leaves no partial file: for files too
-// large to hold in memory, such as a folder's ZIP with its raw frames.
-func FetchToFile(ctx context.Context, hc *http.Client, host, location, dst string) error {
+// FetchTo streams a file the telescope serves into w, for files too large
+// to hold in memory such as a folder's ZIP with its raw frames; more than
+// limit bytes is an error, so a misbehaving peer cannot fill the disk.
+func FetchTo(ctx context.Context, hc *http.Client, host, location string, w io.Writer, limit int64) error {
 	resp, err := get(ctx, hc, host, location)
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
-	tmp := dst + ".part"
-	f, err := os.Create(tmp)
-	if err != nil {
-		return err
-	}
-	_, err = io.Copy(f, resp.Body)
-	if cerr := f.Close(); err == nil {
-		err = cerr
-	}
-	if err != nil {
-		_ = os.Remove(tmp)
-
-		return err
+	n, err := io.Copy(w, io.LimitReader(resp.Body, limit+1))
+	if err == nil && n > limit {
+		err = fmt.Errorf("origin: %s larger than %d bytes", location, limit)
 	}
 
-	return os.Rename(tmp, dst)
+	return err
 }
 
 // FetchFileProgress is FetchFile, calling progress (when not nil) as bytes

@@ -10,6 +10,7 @@ import (
 	"path"
 	"path/filepath"
 	"slices"
+	"strings"
 	"sync"
 
 	"github.com/dkorunic/nightglass/origin"
@@ -102,10 +103,15 @@ func (a *App) saveLogs(ctx context.Context, c *origin.Client, link string) (stri
 		return "", err
 	}
 	// The link comes from the telescope: keep only a plain file name, so a
-	// "..\" or a drive letter cannot write outside SaveDir.
-	p := filepath.Join(dir, safeName(path.Base("/"+link), "origin-logs"))
+	// "..\" or a drive letter cannot write outside SaveDir, and never replace
+	// a file already there (openNew numbers the name instead).
+	name := safeName(path.Base("/"+link), "origin-logs")
+	stem, ext, _ := strings.Cut(name, ".")
+	if ext != "" {
+		ext = "." + ext
+	}
 
-	return p, os.WriteFile(p, b, 0o644) //nolint:gosec // a downloaded archive, readable like any other
+	return writeNew(filepath.Join(dir, stem), ext, b)
 }
 
 // AppLog keeps the newest MiB of Nightglass's own log; app/main.go points

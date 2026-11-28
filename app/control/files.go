@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -129,13 +128,9 @@ func (a *App) zipMessage(ctx context.Context, c *origin.Client, m origin.Message
 	}
 	a.emit("toast", Toast{toastInfo, "Downloading " + name + "…"})
 	go func() {
-		dir := a.Settings().SaveDir
-		// The link comes from the telescope: only a plain file name is kept.
-		p := filepath.Join(dir, safeName(path.Base("/"+zr.DownloadLink), safeName(name, "origin")+".zip"))
-		err := os.MkdirAll(dir, 0o755)
-		if err == nil {
-			err = origin.FetchToFile(ctx, a.httpc, c.Host(), zr.DownloadLink, p)
-		}
+		// Named after the folder asked for, not the link (which comes from
+		// whatever answers as the Origin), and never replacing a file.
+		p, err := a.fetchZip(ctx, c, zr.DownloadLink, name)
 		_ = c.Post(ctx, "ImageServer", "DeleteFile", map[string]any{"FilePath": strings.TrimPrefix(zr.DownloadLink, "Images/")})
 		if err != nil {
 			a.emit("alert", Alert{problemDownload, "Unable to download " + name + ". Please try again."})
@@ -144,6 +139,33 @@ func (a *App) zipMessage(ctx context.Context, c *origin.Client, m origin.Message
 		}
 		a.emit("toast", Toast{toastInfo, "Saved " + p})
 	}()
+}
+
+// maxZip bounds a folder's ZIP: more than an Origin's 64 GB card holds.
+const maxZip = 64 << 30
+
+// fetchZip streams link into a new <name>.zip in SaveDir, removing it again
+// when the download fails.
+func (a *App) fetchZip(ctx context.Context, c *origin.Client, link, name string) (string, error) {
+	dir := a.Settings().SaveDir
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", err
+	}
+	f, err := openNew(filepath.Join(dir, safeName(name, "origin")), ".zip")
+	if err != nil {
+		return "", err
+	}
+	err = origin.FetchTo(ctx, a.httpc, c.Host(), link, f, maxZip)
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	if err != nil {
+		_ = os.Remove(f.Name())
+
+		return "", err
+	}
+
+	return f.Name(), nil
 }
 
 // DeleteDirectory deletes one folder ("Delete Image Directory").

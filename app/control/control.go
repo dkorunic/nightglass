@@ -1905,24 +1905,30 @@ func (a *App) reported(st string) {
 // writeNew writes b to base+ext, or base-1+ext, base-2+ext, … whichever
 // does not exist yet, and returns the path written.
 func writeNew(base, ext string, b []byte) (string, error) {
+	f, err := openNew(base, ext)
+	if err != nil {
+		return "", err
+	}
+	if _, err := f.Write(b); err != nil {
+		_ = f.Close()
+
+		return "", err
+	}
+
+	return f.Name(), f.Close()
+}
+
+// openNew creates base+ext, else base-1+ext, base-2+ext, …: a new file that
+// never replaces one already there (O_EXCL).
+func openNew(base, ext string) (*os.File, error) {
 	for i := 0; ; i++ {
 		p := base + ext
 		if i > 0 {
 			p = fmt.Sprintf("%s-%d%s", base, i, ext)
 		}
 		f, err := os.OpenFile(p, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
-		if errors.Is(err, fs.ErrExist) {
-			continue
+		if !errors.Is(err, fs.ErrExist) {
+			return f, err
 		}
-		if err != nil {
-			return "", err
-		}
-		if _, err := f.Write(b); err != nil {
-			_ = f.Close()
-
-			return "", err
-		}
-
-		return p, f.Close()
 	}
 }
