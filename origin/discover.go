@@ -4,6 +4,7 @@
 package origin
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"net"
@@ -45,18 +46,37 @@ func ParseAnnouncement(b []byte) (string, bool) {
 	return ip.String(), true
 }
 
-// Listen collects announced addresses from pc until ctx ends.
+// announcedID is the telescope an announcement names: the token after
+// "Identity:", or "" when there is none.
+func announcedID(b []byte) string {
+	s, ok := strings.CutPrefix(string(b), "Identity:")
+	if !ok {
+		return ""
+	}
+	id, _, _ := strings.Cut(s, " ")
+
+	return id
+}
+
+// Listen collects announced addresses from pc until ctx ends. An Origin on
+// Wi-Fi and Ethernet announces both addresses under one identity (firmware
+// 1.5.6286 wifi-controller), so it is kept once, at the first address heard.
 func Listen(ctx context.Context, pc net.PacketConn) []string {
 	stop := context.AfterFunc(ctx, func() { _ = pc.SetReadDeadline(time.Now()) })
 	defer stop()
-	var found []string
+	var found, seen []string
 	buf := make([]byte, 1024)
 	for {
 		n, _, err := pc.ReadFrom(buf)
 		if err != nil {
 			return found
 		}
-		if ip, ok := ParseAnnouncement(buf[:n]); ok && !slices.Contains(found, ip) {
+		ip, ok := ParseAnnouncement(buf[:n])
+		if !ok {
+			continue
+		}
+		if key := cmp.Or(announcedID(buf[:n]), ip); !slices.Contains(seen, key) {
+			seen = append(seen, key)
 			found = append(found, ip)
 		}
 	}

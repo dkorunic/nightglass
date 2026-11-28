@@ -102,7 +102,10 @@ func TestPowerCycle(t *testing.T) {
 
 func TestFlatPanelAndRecalibration(t *testing.T) {
 	m, s := quickSim(t)
-	if r := m.handle(fake.Msg{"Destination": "ElPanel", "Command": "TurnOnLight"}); r["ErrorCode"] == 0 {
+	// A missing panel is reported in an Error notification
+	// (EL_PANEL_NOT_CONNECTED), not by refusing the command, and stays off.
+	m.handle(fake.Msg{"Destination": "ElPanel", "Command": "TurnOnLight"})
+	if st := s.Status("ElPanel"); st["LightOn"] == true {
 		t.Error("a missing panel turned on")
 	}
 	s.SetStatus("ElPanel", fake.Msg{"Connected": true, "LightOn": false, "BrightnessLevel": 50})

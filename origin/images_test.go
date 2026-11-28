@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"image"
 	"image/png"
 	"net/http"
 	"sync"
@@ -14,6 +15,7 @@ import (
 	"time"
 
 	"github.com/dkorunic/nightglass/origin/fake"
+	"golang.org/x/image/tiff"
 )
 
 func TestFileURL(t *testing.T) {
@@ -97,5 +99,52 @@ func TestDecodePlain(t *testing.T) {
 	}
 	if bytes.Equal(stretched.Display, plain.Display) || plain.DisplayType != "image/png" || !bytes.Equal(plain.Original, tif) {
 		t.Error("DecodePlain stretched the master, or lost it")
+	}
+}
+
+// An Origin set to save its final image as PNG (ImageServer/SetFsmFormat
+// "png") sends a 16-bit master: stretched as a 16-bit TIFF one is; an 8-bit
+// PNG shows as it is.
+func TestDecodePNGMaster(t *testing.T) {
+	img, err := tiff.Decode(bytes.NewReader(fake.TIFF16()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var b16 bytes.Buffer
+	if err := png.Encode(&b16, img); err != nil {
+		t.Fatal(err)
+	}
+	info := ImageReady{ImageType: "FINAL_STACKED_MASTER"}
+	stretched, err := Decode(info, b16.Bytes())
+	if err != nil {
+		t.Fatal(err)
+	}
+	plain, err := DecodePlain(info, b16.Bytes())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Equal(stretched.Display, plain.Display) || stretched.DisplayType != "image/png" || !bytes.Equal(stretched.Original, b16.Bytes()) {
+		t.Error("a 16-bit PNG master was not stretched, or was lost")
+	}
+	var p8 bytes.Buffer
+	if err := png.Encode(&p8, image.NewGray(image.Rect(0, 0, 4, 4))); err != nil {
+		t.Fatal(err)
+	}
+	b8 := p8.Bytes()
+	if f, err := Decode(info, b8); err != nil || !bytes.Equal(f.Display, b8) {
+		t.Errorf("8-bit PNG master changed: %v", err)
+	}
+}
+
+// A JPEG 2000 final image (SetFsmFormat "jp2", as a JP2 file or a bare
+// codestream) is recognised, so the caller can keep the file it cannot show.
+func TestDecodeJPEG2000(t *testing.T) {
+	for _, b := range [][]byte{
+		{0, 0, 0, 0x0c, 'j', 'P', ' ', ' ', 0x0d, 0x0a, 0x87, 0x0a},
+		{0xff, 0x4f, 0xff, 0x51, 0, 0x2f},
+	} {
+		if _, err := Decode(ImageReady{FileLocation: "FinalStackedMaster.jp2"}, b); !errors.Is(err, ErrJPEG2000) || !errors.Is(err, ErrNotImage) {
+			t.Errorf("% x: err %v, want ErrJPEG2000", b[:4], err)
+		}
 	}
 }

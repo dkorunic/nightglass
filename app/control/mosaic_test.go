@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dkorunic/nightglass/origin"
 	"github.com/dkorunic/nightglass/origin/fake"
 )
 
@@ -31,6 +32,48 @@ func TestMosaicPlanAndGrid(t *testing.T) {
 	m31 := messier(t, a, "M 31")
 	if p.DurationSec != 1200 || math.Abs(p.WidthArcmin-1.2*max(m31.Size, m31.Minor)) > 1e-9 || p.MaxTiles != 20 || p.ISO != 200 {
 		t.Errorf("plan %+v", p)
+	}
+}
+
+// The camera's own sensor at 335 mm, when Camera/GetCameraInfo describes it:
+// a PixelSize that cannot be micrometres keeps the app's default.
+func TestSensorField(t *testing.T) {
+	for _, c := range []struct {
+		ci   origin.CameraInfo
+		x, y float64
+		ok   bool
+	}{
+		{origin.CameraInfo{MaxImageWidth: 3840, MaxImageHeight: 2160, PixelSize: 2}, 3840 * 2e-3 / 335, 2160 * 2e-3 / 335, true},
+		{origin.CameraInfo{MaxImageWidth: 3072, MaxImageHeight: 2048, PixelSize: 2.4}, 3072 * 2.4e-3 / 335, 2048 * 2.4e-3 / 335, true},
+		{origin.CameraInfo{MaxImageWidth: 3840, MaxImageHeight: 2160, PixelSize: 0.002}, 0, 0, false}, // millimetres
+		{origin.CameraInfo{PixelSize: 2}, 0, 0, false},
+		{origin.CameraInfo{}, 0, 0, false},
+	} {
+		x, y, ok := sensorField(c.ci)
+		if ok != c.ok || math.Abs(x-c.x) > 1e-12 || math.Abs(y-c.y) > 1e-12 {
+			t.Errorf("%+v: %v × %v %v, want %v × %v %v", c.ci, x, y, ok, c.x, c.y, c.ok)
+		}
+	}
+}
+
+// Before any frame reports its field, an Origin 678C (3840 × 2160 at 2 µm:
+// 1.31° × 0.74°) plans with its own field, not the app's Origin 178 one.
+func TestMosaicGridFromSensor(t *testing.T) {
+	a, _, _ := connectedTo(t, func(s *fake.Server) {
+		s.SetInfo("Camera/GetCameraInfo", fake.Msg{"CameraModel": "Origin678C", "MaxImageWidth": 3840, "MaxImageHeight": 2160, "PixelSize": 2.0})
+	})
+	cl, _ := a.cl()
+	for end := time.Now().Add(2 * time.Second); time.Now().Before(end); time.Sleep(5 * time.Millisecond) {
+		if ci, _ := cl.CameraInfo(); ci.MaxImageWidth > 0 {
+			break
+		}
+	}
+	// Stride 0.8 × 0.012896 rad = 35.5′ (the default's 40.35′ gives 3 × 1).
+	if g := a.GridFor(120, 40); g.Cols != 4 || g.Rows != 2 {
+		t.Errorf("grid %+v", g)
+	}
+	if _, _, _, ok := a.fov(); ok {
+		t.Error("a sensor field has no orientation")
 	}
 }
 

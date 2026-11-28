@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/dkorunic/nightglass/catalog"
+	"github.com/dkorunic/nightglass/origin"
 	"github.com/dkorunic/nightglass/origin/fake"
 )
 
@@ -61,6 +62,45 @@ func TestSolarSystemTargets(t *testing.T) {
 	if a.GotoBody("Sun") == nil {
 		t.Error("go-to the Sun accepted")
 	}
+	// Unaligned, the Origin refuses moving-target tracking: none is sent.
+	if len(received(s, "Mount", "TrackMovingTarget")) != 0 {
+		t.Error("TrackMovingTarget sent to an unaligned mount")
+	}
+	// Aligned, the go-to is followed by an hour's track (361 places 10 s
+	// apart from 30 s on, as Celestron's web app tracks slow targets), so
+	// the Moon or a planet stays centred without imaging.
+	s.SetStatus("Mount", fake.Msg{"IsAligned": true})
+	s.NotifyStatus("Mount")
+	c, _ := a.cl()
+	for end := time.Now().Add(2 * time.Second); time.Now().Before(end); time.Sleep(5 * time.Millisecond) {
+		var ms origin.MountStatus
+		if m, ok := c.Last("Mount/GetStatus"); ok && m.Decode(&ms) == nil && ms.IsAligned {
+			break
+		}
+	}
+	if err := a.GotoBody(up); err != nil {
+		t.Fatal(err)
+	}
+	m, ok := s.Wait(fake.Is("Mount", "TrackMovingTarget"), time.Second)
+	track, _ := m["TargetTrack"].([]any)
+	if !ok || len(track) != 361 {
+		t.Fatalf("TrackMovingTarget %d places (%v)", len(track), ok)
+	}
+	first, last := track[0].(map[string]any), track[360].(map[string]any)
+	jd0 := catalog.JulianDate(evening.Add(30 * time.Second))
+	if math.Abs(first["JulianDate"].(float64)-jd0) > 1e-9 || math.Abs(last["JulianDate"].(float64)-jd0-3600.0/86400) > 1e-9 {
+		t.Errorf("track from JD %v to %v, want %v + 1 h", first["JulianDate"], last["JulianDate"], jd0)
+	}
+	if math.Abs(first["Ra"].(float64)-m0Ra(up, st)) > 1e-3 {
+		t.Errorf("track starts at RA %v", first["Ra"])
+	}
+}
+
+// m0Ra is a body's RA (radians) 30 s after the test's evening.
+func m0Ra(name string, st Settings) float64 {
+	ra, _, _, _ := catalog.Body(name, evening.Add(30*time.Second), st.LatDeg, st.LonDeg)
+
+	return ra * math.Pi / 180
 }
 
 // Power Off disconnects once the Origin answers, as the app's

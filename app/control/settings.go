@@ -102,6 +102,11 @@ type Settings struct {
 	// AutoCrop cuts 32 pixels off the masters' edges (KeyOriginAutoCropImage),
 	// on by default.
 	AutoCrop bool
+	// Cooling and CoolingTargetC are a cooled camera's cooler (HasCooling),
+	// sent on each connect: preferences, as in Celestron's web app (off,
+	// +10 °C by default); not in the app, whose cameras have none.
+	Cooling        bool
+	CoolingTargetC float64
 }
 
 // DefaultSettings has no location: the user must enter one.
@@ -114,8 +119,12 @@ func DefaultSettings() Settings {
 		SnapshotExposureSec: 0.1, StopOnPlateSolveFail: true, DitherDistance: 15, DitherInterval: 3,
 		NightBrightness: 65, TimeFormat: "24hs", DateOrder: "YMD", CoordFormat: "dms",
 		SlewRate: 4, MosaicFlatten: true, MosaicNormalize: true, MosaicEqualize: true, AutoCrop: true, PostProcess: true, MaxExposureSec: 30,
+		CoolingTargetC: 10,
 	}
 }
+
+// coolingMin and coolingMax bound a cooler's target, °C.
+const coolingMin, coolingMax = -30.0, 30.0
 
 // HasLocation is false for 0°, 0°, which the telescope treats as unset.
 func (s Settings) HasLocation() bool {
@@ -150,6 +159,9 @@ func (s Settings) Validate() error {
 	}
 	if s.NightBrightness < 20 || s.NightBrightness > 100 {
 		errs = append(errs, fmt.Errorf("night vision brightness %d%% outside 20–100%%", s.NightBrightness))
+	}
+	if !(s.CoolingTargetC >= coolingMin && s.CoolingTargetC <= coolingMax) {
+		errs = append(errs, fmt.Errorf("cooling target %v °C outside %v–%v °C", s.CoolingTargetC, coolingMin, coolingMax))
 	}
 	if !slices.Contains(timeFormats, s.TimeFormat) ||
 		!slices.Contains(dateOrders, s.DateOrder) ||
@@ -230,6 +242,9 @@ func repair(s Settings) Settings {
 	}
 	if s.SlewRate < 0 || s.SlewRate > 4 {
 		s.SlewRate = d.SlewRate
+	}
+	if !(s.CoolingTargetC >= coolingMin && s.CoolingTargetC <= coolingMax) {
+		s.CoolingTargetC = d.CoolingTargetC
 	}
 	if s.DitherDistance < 0 {
 		s.DitherDistance = d.DitherDistance

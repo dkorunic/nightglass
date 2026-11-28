@@ -151,12 +151,30 @@ func (a *App) Tonight() (SunMoon, error) {
 // GotoBody goes to the Moon or a planet where it is now, as Goto.
 func (a *App) GotoBody(name string) error {
 	s := a.Settings()
-	ra, dec, _, ok := catalog.Body(name, a.now(), s.LatDeg, s.LonDeg)
+	now := a.now()
+	ra, dec, _, ok := catalog.Body(name, now, s.LatDeg, s.LonDeg)
 	if !ok {
 		return fmt.Errorf("unknown solar system body %q", name)
 	}
+	if err := a.Goto(ra, dec); err != nil {
+		return err
+	}
+	// Not app parity: the app's go-to leaves the Moon or a planet to drift at
+	// the sidereal rate until imaging sends its track. An aligned Origin is
+	// given an hour's track (361 places 10 s apart, as Celestron's web app
+	// tracks slow targets); unaligned it refuses one, so none is sent.
+	var ms origin.MountStatus
+	c, err := a.cl() // the go-to went out; a link dropped since sends no track
+	if err == nil {
+		if m, ok := c.Last("Mount/GetStatus"); ok {
+			_ = m.Decode(&ms)
+		}
+	}
+	if !ms.IsAligned {
+		return nil
+	}
 
-	return a.Goto(ra, dec)
+	return c.TrackMovingTarget(context.Background(), catalog.TrackSpan(name, now, s.LatDeg, s.LonDeg, 361, 10*time.Second))
 }
 
 // Goto slews to a J2000 position (degrees). Like the native
@@ -664,6 +682,38 @@ func (a *App) StopSlew() error {
 	a.slewing = false
 	a.mu.Unlock()
 	a.refresh()
+
+	return nil
+}
+
+// FocusJog runs the focuser while a button is held (Focuser/Move v, -3..3,
+// positive in; 0 stops), only while idle as the focus buttons. Like a
+// slew, a moving jog is owed a stop until one is acknowledged: a drop
+// leaves it to Connect's state handler.
+func (a *App) FocusJog(v int) error {
+	c, err := a.cl()
+	if err != nil {
+		return err
+	}
+	if v < -3 || v > 3 {
+		return fmt.Errorf("focus speed %d outside -3..3", v)
+	}
+	if v != 0 {
+		if c.TaskState() != "IDLE" {
+			return errFocusBusy
+		}
+		a.mu.Lock()
+		a.jogging = true
+		a.mu.Unlock()
+	}
+	if err := c.FocusMove(context.Background(), v); err != nil {
+		return err
+	}
+	if v == 0 {
+		a.mu.Lock()
+		a.jogging = false
+		a.mu.Unlock()
+	}
 
 	return nil
 }

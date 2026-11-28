@@ -326,7 +326,8 @@ func TestRealisticLink(t *testing.T) {
 	newSim(s, 20*time.Millisecond)
 	captured(s)
 	s.PingInterval = 20 * time.Millisecond
-	s.OnConnect = func() { pushAll(s) }
+	mods := []string{"Mount", "Camera", "TaskController", "Environment", "Disk", "DewHeater"}
+	s.OnConnect = func() { pushAll(s, mods) }
 	c := origin.New(s.Host())
 	c.PollInterval, c.MinBackoff = -1, 10*time.Millisecond
 	ups := make(chan bool, 8)
@@ -338,7 +339,7 @@ func TestRealisticLink(t *testing.T) {
 		t.Fatal("not connected")
 	}
 	seen := map[string]bool{}
-	for end := time.After(3 * time.Second); len(seen) < len(pushes); {
+	for end := time.After(3 * time.Second); len(seen) < len(mods); {
 		select {
 		case m := <-sub:
 			if m.Type == origin.TypeNotification {

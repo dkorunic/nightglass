@@ -32,6 +32,10 @@ type OriginSettings struct {
 
 	DewMode string // DewHeater/GetStatus: "Auto", "Manual" or "" (unknown)
 
+	// FinalFormat is the file the Origin saves its final image as
+	// (ImageServer/GetFsmFormat): "tif", "png", "jp2" or "" (unknown).
+	FinalFormat string
+
 	// Version & Updates (ScopeOriginVersionFragment); "" is unknown.
 	Model, Version, Serial string
 	Channel                string  // the update channel, "stable" by default
@@ -45,6 +49,8 @@ type OriginSettings struct {
 	ElPanelConnected, ElPanelOn bool // ElPanel/GetStatus: the GIOTTO flat generator
 
 	FakeInitialized bool // demo mode is on
+
+	HasCooling bool // Camera/GetCameraInfo: a cooled camera, so Camera Cooling shows
 }
 
 // settingsQueries are what updateAdvancedSettingsFromScope asks for, plus
@@ -65,6 +71,7 @@ var settingsQueries = [][2]string{
 	{"System", "HasUpdateAvailable"},
 	{"Network", "HasInternetConnection"},
 	{"FactoryCalibrationController", "GetSerialNumber"},
+	{"ImageServer", "GetFsmFormat"}, // not in the app, which never changes it
 }
 
 // OriginSettings asks the telescope for its settings and returns them. A
@@ -130,6 +137,9 @@ func readSettings(c *origin.Client) OriginSettings {
 	}
 	decode("DewHeater/GetStatus", &dew)
 	o.DewMode = dew.Mode
+	var fsm struct{ Format string }
+	decode("ImageServer/GetFsmFormat", &fsm)
+	o.FinalFormat = fsm.Format
 	if dew.Aggression != nil {
 		o.DewAggression = *dew.Aggression
 	}
@@ -145,6 +155,8 @@ func readSettings(c *origin.Client) OriginSettings {
 	var ts origin.TaskStatus
 	decode("TaskController/GetStatus", &ts)
 	o.FakeInitialized = ts.IsFakeInitialized
+	ci, _ := c.CameraInfo()
+	o.HasCooling = ci.HasCooling
 	var ver struct{ Number string }
 	var model, channel struct{ Value string }
 	var serial struct{ SerialNumber string }
@@ -177,6 +189,17 @@ func (a *App) set(dest, cmd string, p map[string]any, readBack ...string) error 
 
 		return nil
 	})
+}
+
+// SetFinalFormat sets the file the Origin saves its final image as, "tif" or
+// "png" (ImageServer/SetFsmFormat). origin-core also takes "jp2", which
+// Nightglass cannot show (it keeps such a file unseen), so it is not offered.
+func (a *App) SetFinalFormat(format string) error {
+	if format != "tif" && format != "png" {
+		return fmt.Errorf("final image format %q is not tif or png", format)
+	}
+
+	return a.set("ImageServer", "SetFsmFormat", map[string]any{"Format": format}, "GetFsmFormat")
 }
 
 func inRange(what string, v, lo, hi float64) error {

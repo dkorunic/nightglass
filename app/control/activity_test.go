@@ -86,9 +86,20 @@ func TestStatusText(t *testing.T) {
 		{"darks", statusIn{Connected: true, Task: task(t, `{"State":"GENERATING_DARKS","DarkGenerationInfo":{"PercentageComplete":30}}`)}, "Generating Darks 30%…"},
 		{"flats", statusIn{Connected: true, Task: task(t, `{"State":"GENERATING_FLATS"}`)}, "Generating Flats…"},
 		{"flats pct", statusIn{Connected: true, FlatsPercent: new(float64(55)), Task: task(t, `{"State":"GENERATING_FLATS"}`)}, "Generating Flats 55%…"},
+		// Firmware 1.5.6286 reports it in the TaskController status itself.
+		{"flats task pct", statusIn{Connected: true, Task: task(t, `{"State":"GENERATING_FLATS","FlatGenerationInfo":{"PercentageCompleted":30}}`)}, "Generating Flats 30%…"},
 		{"factory", statusIn{Connected: true, Task: task(t, `{"State":"FACTORY_COLLIMATION"}`)}, "Factory Calibration…"},
 		{"dark current", statusIn{Connected: true, Task: task(t, `{"State":"MEASURING_DARK_CURRENT"}`)}, "Factory Calibration…"},
 		{"restore darks", statusIn{Connected: true, Task: task(t, `{"State":"RESTORE_DARKS_TO_FACTORY"}`)}, "Restoring Dark Frames…"},
+		// States firmware 1.5.6286 has that the app's enum does not (Nightglass texts).
+		{"resuming list", statusIn{Connected: true, Task: task(t, `{"State":"RESUMING_IMAGING_LIST"}`)}, "Resuming Imaging Schedule…"},
+		{"restacking", statusIn{Connected: true, Task: task(t, `{"State":"RESTACKING_IMAGE"}`)}, "Restacking Image…"},
+		// Progress firmware 1.5.6286 reports that the app does not show
+		// (field names as Celestron's web app reads them).
+		{"focusing %", statusIn{Connected: true, Task: task(t, `{"State":"FOCUSING","FocusInfo":{"PercentageComplete":40}}`)}, "Focusing 40%…"},
+		{"focuser calibration %", statusIn{Connected: true, Task: task(t, `{"State":"CALIBRATING_FOCUSER","FocuserCalibrationInfo":{"PercentComplete":12.7}}`)}, "Calibrating Focuser 12%…"},
+		{"zipping %", statusIn{Connected: true, Task: task(t, `{"State":"ZIPPING_DIRECTORY","ZipInfo":{"PercentageComplete":75}}`)}, "Compressing Files 75%…"},
+		{"focusing", statusIn{Connected: true, Task: task(t, `{"State":"FOCUSING"}`)}, "Focusing…"},
 		{"flash", statusIn{Connected: true, Task: task(t, `{"State":"COPY_ALL_DIRECTORIES_TO_FLASH_DRIVE"}`)}, "Copying all to Flash Drive…"},
 		{"zip", statusIn{Connected: true, Task: task(t, `{"State":"ZIPPING_DIRECTORY"}`)}, "Compressing Files…"},
 		{"update", statusIn{Connected: true, Task: task(t, `{"State":"UPDATING_SYSTEM"}`)}, "Updating System…"},

@@ -37,6 +37,8 @@ export async function loadFiles() {
     };
     li.append(name,
       btn("Download Stacked Master", () => act("DownloadDirectory", d)),
+      // The whole folder, raw frames included, as a ZIP (Celestron's web app's download).
+      btn("Download All Files (ZIP)", () => act("DownloadFolderZip", d)),
       btn("Copy Folder to USB", () => act("CopyDirectoryToUSB", d)),
       btn("Delete Image Directory", async () => {
         if (busy()) return;

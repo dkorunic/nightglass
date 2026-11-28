@@ -15,6 +15,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -44,6 +45,7 @@ type Server struct {
 	conns    map[*websocket.Conn]struct{}
 	status   map[string]Msg
 	info     map[string]Msg // other Get* answers, by "Dest/Cmd"
+	absent   map[string]Msg // modules not there: the error every command gets
 	files    map[string][]byte
 	received []Msg
 	// PingInterval > 0 pings each client that often, as a real Origin's
@@ -64,8 +66,9 @@ func New(addr string) (*Server, error) {
 		return nil, err
 	}
 	s := &Server{
-		conns: map[*websocket.Conn]struct{}{},
-		files: map[string][]byte{},
+		conns:  map[*websocket.Conn]struct{}{},
+		absent: map[string]Msg{},
+		files:  map[string][]byte{},
 		info: map[string]Msg{
 			"Camera/GetCameraInfo":              {"DefaultIso": 200, "MinIso": 100, "MaxIso": 20000, "MinExposure": 0.001, "MaxExposure": 30.0, "IsColor": true},
 			"Mount/GetMountConfig":              {"OnWedge": false, "IsEquatorial": false},
@@ -83,6 +86,7 @@ func New(addr string) (*Server, error) {
 			"System/GetVersion":                            {"Number": "0.0.0-fake"},
 			"System/GetModel":                              {"Value": "Origin (simulated)"},
 			"System/GetUpdateChannel":                      {"Value": "stable"},
+			"ImageServer/GetFsmFormat":                     {"Format": "tif"},
 			"System/GetAutomaticUpdates":                   {"Enabled": false},
 			"Network/HasInternetConnection":                {"Value": false},
 			"FactoryCalibrationController/GetSerialNumber": {"SerialNumber": "SIM-0001"},
@@ -193,25 +197,53 @@ func Reply(req Msg) Msg {
 	}
 }
 
-// DefaultHandle acknowledges every command, answers GetStatus and
-// GetCaptureParameters with the module's status and the other known Get*
-// queries from SetInfo, and refuses a RunImaging without its required Uuid.
+// DefaultHandle acknowledges every command an Origin knows, answers
+// GetStatus and GetCaptureParameters with the module's status and the other
+// known Get* queries from SetInfo. As firmware 1.5.6286 it refuses an
+// unknown module (-1) or command (-2), anything for an absent module
+// (SetAbsent), a DeleteFile outside Astrophotography/ and Calibration/, and
+// a RunImaging without its required Uuid.
 func (s *Server) DefaultHandle(req Msg) Msg {
 	r := Reply(req)
 	cmd, _ := req["Command"].(string)
 	dest, _ := req["Destination"].(string)
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	known, ok := commands[dest]
+	path, _ := req["FilePath"].(string)
 	switch {
+	case !ok:
+		r["ErrorCode"], r["ErrorMessage"] = -1, "Unknown destination: "+dest // UNKNOWN_DESTINATION
+	case !slices.Contains(known, cmd):
+		r["ErrorCode"], r["ErrorMessage"] = -2, "Unknown command: "+cmd // UNKNOWN_COMMAND
+	case s.absent[dest] != nil:
+		maps.Copy(r, s.absent[dest])
+	case dest == "ImageServer" && cmd == "DeleteFile" && !strings.HasPrefix(path, "Astrophotography/") && !strings.HasPrefix(path, "Calibration/"):
+		r["ErrorCode"], r["ErrorMessage"] = -3, "FilePath must begin with 'Astrophotography/' or 'Calibration/'" // INVALID_DATA
 	case cmd == "GetStatus" || cmd == "GetCaptureParameters":
 		maps.Copy(r, s.status[dest])
 	case s.info[dest+"/"+cmd] != nil:
 		maps.Copy(r, s.info[dest+"/"+cmd])
 	case dest == "TaskController" && cmd == "RunImaging" && req["Uuid"] == nil:
-		r["ErrorCode"], r["ErrorMessage"] = -1, "missing required field Uuid"
+		r["ErrorCode"], r["ErrorMessage"] = -4, "missing required field Uuid" // MISSING_DATA
 	}
 
 	return r
+}
+
+// SetAbsent makes module an accessory that is not there (code 0: back
+// again): every command to it, GetStatus included, is answered with code and
+// message, and NotifyStatus pushes nothing for it, as an Origin without a
+// dew heater pushes no DewHeater status.
+func (s *Server) SetAbsent(module string, code int, message string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if code == 0 {
+		delete(s.absent, module)
+
+		return
+	}
+	s.absent[module] = Msg{"ErrorCode": code, "ErrorMessage": message}
 }
 
 // SetInfo merges fields into the answer to a Get* query such as
@@ -249,7 +281,11 @@ func (s *Server) NotifyStatus(dest string) {
 	s.mu.Lock()
 	m := Msg{}
 	maps.Copy(m, s.status[dest])
+	absent := s.absent[dest] != nil
 	s.mu.Unlock()
+	if absent {
+		return
+	}
 	cmd := "GetStatus"
 	if dest == "Camera" {
 		cmd = "GetCaptureParameters"

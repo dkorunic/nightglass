@@ -106,20 +106,22 @@ disagree. If no `*.gob` exists at all (a fresh tree), add
 Run against a real Origin, from the GUI and once with `originctl`. Items marked
 **verify** are protocol details only the hardware can confirm.
 
-1. `originctl discover` lists the telescope (UDP 55555; **verify** the
-   announcement text with `originctl watch` if not). On Origin's own Wi-Fi
-   it also lists `1.2.3.4` (**verify** the Origin answers there on port 80).
-2. Connect; status shows mount, battery, task state, weather, storage.
-   **Verify** with `originctl watch` that replies name their module in
-   `Source` (or else in `Destination`); an empty status pane means neither
-   matched (`origin/message.go` `Module`).
+1. `originctl discover` lists the telescope once (UDP 55555; firmware
+   1.5.6286 announces `Identity:<id> Origin IP Address = <ip>` for each of
+   its Wi-Fi and Ethernet addresses, kept once by identity). On Origin's own
+   Wi-Fi it also lists `1.2.3.4`, its direct-connect address.
+2. Connect; status shows mount, battery, task state, weather, storage
+   (replies and notifications name their module in `Source`, which
+   Celestron's own web app in firmware 1.5.6286 routes by too).
 3. Settings: enter location and time zone. Initialize & align completes and
-   *Aligned* turns yes. **Verify** latitude/longitude are taken as radians
-   (a wrong unit fails alignment or reports a wrong site in Mount status).
+   *Aligned* turns yes (latitude/longitude go out as radians, which firmware
+   1.5.6286 checks them as).
 4. Slew pad and arrow keys move the mount at each rate (1–4); releasing stops it.
-   Switching to another window mid-slew stops it. **Verify** up/right match
-   the mount's altitude-up / azimuth-increasing.
-5. Pull the Wi-Fi mid-slew: the mount stops when the link returns.
+   Switching to another window mid-slew stops it. Up and right send
+   +`AltRate` and +`AzmRate`, as Celestron's web app does; **verify** right
+   is azimuth-increasing.
+5. Pull the Wi-Fi mid-slew: within about 10 s Nightglass notices the silent
+   link and reconnects; the mount stops when the link returns.
 6. Focus ±10/±100 (±100/±1000 in snapshot mode) and a typed position move
    the focuser within its limits, only while idle; Auto runs autofocus.
    **Verify** `Focuser/GetPositionLimits` and the stretch sliders change the
@@ -142,9 +144,11 @@ Run against a real Origin, from the GUI and once with `originctl`. Items marked
    **verify** both modes and snapshot (manual live view).
 9. Night mode (N) turns the whole window red.
 10. Snapshot mode: Capture Image takes a snapshot to save or delete.
-    Reframe: click the image, Center Here recentres there (**verify** the
-    offsets' direction). The filter button changes filters and offers
-    autofocus.
+    Reframe: click the image, Center Here recentres there (with Optics
+    `MirrorFlip` the x offset is mirrored, as Celestron's web app does;
+    **verify** the direction, and the `MirrorFlip` an Origin reports to
+    `Optics/GetConfiguration` in `originctl watch`). The filter button
+    changes filters and offers autofocus.
 11. Files: list, re-download, copy to a USB stick (progress, cancel) and
     delete image folders. Origin: each advanced setting changes the
     telescope (**verify** the dew heater, fans and lights respond).
@@ -159,13 +163,16 @@ Run against a real Origin, from the GUI and once with `originctl`. Items marked
 14. Solar System: go to the Moon and a planet, then image them. **Verify**
     the run's `TargetTrack` (16 J2000 places one second apart from 30 s on,
     the Moon corrected for parallax, Julian dates in UT) keeps the target
-    centred, and that `ObjectSize` (twice the object's size, as the app
+    centred; firmware 1.5.6286 drops a track with no point after its own
+    clock, so a computer clock more than about 45 s behind the Origin's
+    loses it. **Verify** that `ObjectSize` (twice the object's size, as the app
     sends it) gives the same exposures as the Origin's own app.
 15. Status: charger, the site and clock the mount reports (they should match
     Settings after Initialize), encoders and, with a StarSense Autoguider,
     its state. The warning badge shows a low battery, charger fault or full
-    disk. Origin → Download Origin Logs saves the log bundle (**verify** the
-    `System/LogsReady` link downloads). Power Off disconnects. An
+    disk. Origin → Download Origin Logs saves the log bundle (firmware
+    1.5.6286 sends its `DownloadLink` in `System/LogsReady` and serves it
+    under `/SmartScope-1.0/dev2/Logs`). Power Off disconnects. An
     out-of-range manual exposure is limited with the app's explanation.
 16. Gallery: favorite, view, delete and share (the file manager opens at the
     image) saved images; Edit an image, crop and rotate it, Overwrite and
@@ -178,8 +185,9 @@ Run against a real Origin, from the GUI and once with `originctl`. Items marked
     rejoins a run in progress. **Verify** which close code the Origin sends
     when it shuts the connection itself (a normal close now disconnects
     without reconnecting).
-19. A timed run (Stop after N min): **verify** the Origin ends it after that
-    long, and that the final image then arrives; compare the battery
+19. A timed run (Stop after N min): the Origin ends it after that long
+    (Celestron's web app relies on it too); **verify** the final image then
+    arrives; compare the battery
     percentage with the Origin's battery level over a session.
 20. Origin → Reboot: **verify** the Origin restarts and how long it takes
     (Nightglass waits 180 s, as after an update; Attempt To Connect from the
@@ -190,13 +198,15 @@ Run against a real Origin, from the GUI and once with `originctl`. Items marked
 22. Mosaic: from a target, Mosaic… with a 2 × 2 grid; **verify** the tiles,
     their thumbnails, the status line's tile and frame, Re-Capture, and
     Compose Mosaic (the composed image is saved); `originctl watch` shows
-    whether the Origin pushes Mosaic notifications.
+    whether the Origin pushes Mosaic notifications. Before the first frame the
+    grid uses the sensor `Camera/GetCameraInfo` reports, at 335 mm:
+    **verify** its `MaxImageWidth`, `MaxImageHeight` and `PixelSize` (µm)
+    with `originctl watch` (an Origin 678C plans 4 × 2 tiles for 120′ × 40′).
 23. Version & Updates: **verify** the update offer against Celestron's
     channel list, the release notes, and "Download And Update Origin" (the
     Origin downloads, installs and restarts; Nightglass reconnects).
-24. With `originctl watch`: **verify** the UDP announcement text, that
-    replies name their module in `Source` (as the captures show), and the
-    close code when the Origin ends a session.
+24. With `originctl watch`: **verify** the close code when the Origin ends a
+    session.
 25. Start a mosaic, disconnect until it finishes, reconnect: "Image List
     Available for Download" is offered (**verify** that
     `TaskController/GetObservingListInfo` answers `ImagingInfo.ListStatus`
@@ -231,6 +241,36 @@ Run against a real Origin, from the GUI and once with `originctl`. Items marked
     **Verify** go-to, slew, initialise and halt answer promptly (Nightglass no
     longer waits for them) and that a single Origin is found at once via
     origin.local.
+35. Origin → Images → Final Image Format: switch to PNG, image, finish; the
+    final image shows stretched and saves. **Verify** `ImageServer/GetFsmFormat`
+    answers with `Format` (`tif`, `png` or `jp2`). Set `jp2` with another
+    client: the final image is kept as a `.jp2` beside the PNGs, with a toast.
+36. Go to the Moon (or a planet) with the telescope aligned and do not image:
+    **verify** it stays centred for an hour (`Mount/TrackMovingTarget`, 361
+    places 10 s apart) and that the go-to is not cut short by the track.
+37. Files: Download All Files (ZIP) on a run saved with raw images: the ZIP
+    (status "Compressing Files N%…") lands in the save folder with the
+    `Light*.fits` frames, and **verify** it is gone from the Origin after
+    (`ImageServer/DeleteFile`).
+38. Focus Hold: In / Hold: Out run the focuser while held and stop on
+    release, on leaving the window, and after a Wi-Fi pull. **Verify** which
+    way "in" moves the reported position.
+39. Status: battery temperature, telescope and CPU temperatures, the
+    camera's temperature and, while guiding, the RA/Dec corrections.
+40. With an Origin-585C-TEC (cooled camera): Origin → Camera Cooling shows;
+    Cooler On at a target cools (status shows the cooler's power), and the
+    choice is sent again after a reconnect. **Verify** the camera reports
+    `Temperature` and `PowerLevel` in `Camera/GetCaptureParameters`.
+41. A task that fails (initialize in daylight without demo mode): one
+    "Origin Error" alert, not one per second, and the status line follows the
+    Origin. **Verify** with `originctl watch` that `TaskController/GetStatus`
+    carries the `ErrorCode` beside its `State`, and that a halted task
+    reports -7 (`INTERRUPTED`, not shown).
+42. Without a dew heater: **verify** what `DewHeater/GetStatus` answers
+    (`origin-fake -dewheater=false` assumes -19, `DEW_HEATER_NO_RESPONSE`,
+    which shows an alert on each connect), and the status push rates
+    (`origin-fake` pushes Mount, Camera, TaskController, Environment and
+    DewHeater about once a second, as Celestron's web app describes).
 
 ## License
 

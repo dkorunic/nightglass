@@ -38,6 +38,10 @@ async function renderOrigin(cached = false) {
   show(f.dewpower, Math.round(o.DewPower * 100), o.Known && o.DewMode === "Manual");
   show(f.giotto, o.ElPanelOn, o.ElPanelConnected && o.Known && o.Idle);
   show(f.giottolevel, o.ElPanelLevel ?? null, o.ElPanelConnected && o.ElPanelOn && o.Known && o.Idle);
+  show(f.finalformat, o.FinalFormat || null, !!o.FinalFormat && o.Idle);
+  $("#cooling-section").hidden = !o.HasCooling;
+  f.cooling.checked = !!settings.Cooling;
+  f.coolingtarget.value = settings.CoolingTargetC;
   $("#recalibrate").disabled = !(o.Recalibrating === false && o.Idle);
   $("#recalibrate").textContent = o.Recalibrating ? "Recalibration in Progress…" : "Recalibrate Environment Sensor";
   $("#polar-align").disabled = !(o.Idle && o.OnWedge);
@@ -113,6 +117,18 @@ $("#origin-form").addEventListener("input", () => sliderLabels($("#origin-form")
   f.dewpower.onchange = () => change("SetDewManual", f.dewpower.value / 100);
   f.giotto.onchange = () => change("SetFlatPanel", f.giotto.checked);
   f.giottolevel.onchange = () => change("SetFlatPanelLevel", Number(f.giottolevel.value));
+  f.finalformat.onchange = () => change("SetFinalFormat", f.finalformat.value);
+  // The cooler's choice is a preference (sent again on each connect), then sent now.
+  const cool = async () => {
+    const target = Number(f.coolingtarget.value);
+    if (!(target >= -30 && target <= 30)) return renderOrigin();
+    settings.Cooling = f.cooling.checked;
+    settings.CoolingTargetC = target;
+    await act("SaveSettings", settings);
+    await act("SetCooling", settings.Cooling, target);
+  };
+  f.cooling.onchange = cool;
+  f.coolingtarget.onchange = cool;
   // The app's mosaic composition options are its preferences, not the Origin's.
   for (const [el, key] of [[f.mosaicflatten, "MosaicFlatten"], [f.mosaicnormalize, "MosaicNormalize"], [f.mosaicequalize, "MosaicEqualize"], [f.autocrop, "AutoCrop"], [f.postprocess, "PostProcess"]]) {
     el.onchange = async () => { settings[key] = el.checked; await act("SaveSettings", settings); };

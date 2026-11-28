@@ -72,11 +72,9 @@ func TestUpdateOrigin(t *testing.T) {
 	if a.UpdateOrigin() == nil {
 		t.Error("update without internet on the Origin")
 	}
+	// The Origin got internet after connecting: Download And Update asks
+	// again rather than trusting the connect-time answer.
 	s.SetInfo("Network/HasInternetConnection", fake.Msg{"Value": true})
-	c, _ := a.cl()
-	if _, err := c.Send(t.Context(), "Network", "HasInternetConnection", nil); err != nil {
-		t.Fatal(err)
-	}
 	if err := a.UpdateOrigin(); err != nil {
 		t.Fatal(err)
 	}

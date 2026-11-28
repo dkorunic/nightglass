@@ -5,6 +5,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"math"
 	"sync"
 	"time"
@@ -104,13 +105,21 @@ func (m *mount) step() {
 	m.publish(arrived)
 }
 
-// publish sets the Mount status, notifying when a go-to ends.
+// publish sets the Mount status, notifying when a go-to ends. Date and Time
+// are the mount's clock in the observer's time zone, in the format
+// RunInitialize sends them.
 func (m *mount) publish(notify bool) {
 	const d = math.Pi / 180
+	loc, err := time.LoadLocation(fmt.Sprint(m.s.Status("Mount")["TimeZone"]))
+	if err != nil {
+		loc = time.UTC
+	}
 	m.mu.Lock()
+	now := m.now().In(loc)
 	st := fake.Msg{
 		"Ra": m.ra * d, "Dec": m.dec * d, "Alt": m.alt * d, "Azm": m.az * d,
 		"IsGotoOver": m.target == nil, "IsTracking": m.tracking,
+		"Date": now.Format("02 01 2006"), "Time": now.Format("15:04:05"),
 	}
 	m.mu.Unlock()
 	m.s.SetStatus("Mount", st)
@@ -143,9 +152,9 @@ func (m *mount) gotoRaDec(raRad, decRad float64) {
 	m.publish(true)
 }
 
-// slew sets the manual rates (Mount/Slew); 0, 0 stops, as does
-// Mount/AbortAxisMovement, which also ends a go-to.
-func (m *mount) slew(altRate, azmRate int, abort bool) {
+// slew sets the manual rates (Mount/Slew); 0, 0 stops. Origin firmware
+// 1.5.6286 has no Mount/AbortAxisMovement, so Slew is the only stop.
+func (m *mount) slew(altRate, azmRate int) {
 	sign := func(r int) float64 {
 		if r < 0 {
 			return -slewSpeeds[-r]
@@ -156,7 +165,7 @@ func (m *mount) slew(altRate, azmRate int, abort bool) {
 	m.step()
 	m.mu.Lock()
 	m.altRate, m.azmRate = sign(altRate), sign(azmRate)
-	if abort || altRate != 0 || azmRate != 0 {
+	if altRate != 0 || azmRate != 0 {
 		m.target = nil
 	}
 	m.mu.Unlock()

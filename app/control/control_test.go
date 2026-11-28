@@ -264,6 +264,10 @@ func TestSlewStoppedAfterReconnect(t *testing.T) {
 	if err := a.Slew(4, 0); err != nil {
 		t.Fatal(err)
 	}
+	// The slew is posted without waiting: count it as before the drop.
+	if _, ok := s.Wait(fake.Is("Mount", "Slew"), time.Second); !ok {
+		t.Fatal("slew not sent")
+	}
 	dropped := len(s.Received())
 	s.DropAll()
 	rec.wait(t, "conn", func(d any) bool { return !d.(Conn).Connected && d.(Conn).Host != "" })
@@ -282,6 +286,73 @@ func TestSlewStoppedAfterReconnect(t *testing.T) {
 
 			break
 		}
+	}
+}
+
+// Focus jog (Celestron's web app's Move In/Out): Focuser/Move with Value
+// -3..3 (positive moves in) while held, 0 to stop, only while idle. Like a
+// slew, a jog cut off by a drop is stopped first thing after the reconnect.
+func TestFocusJog(t *testing.T) {
+	a, rec, s := connected(t)
+	if err := a.FocusJog(2); err != nil {
+		t.Fatal(err)
+	}
+	if m := lastSent(t, s, "Focuser", "Move"); m["Value"] != 2.0 {
+		t.Errorf("Move %v", m)
+	}
+	if err := a.FocusJog(0); err != nil {
+		t.Fatal(err)
+	}
+	if m := lastSent(t, s, "Focuser", "Move"); m["Value"] != 0.0 {
+		t.Errorf("stop %v", m)
+	}
+	if a.FocusJog(4) == nil || a.FocusJog(-4) == nil {
+		t.Error("an out-of-range jog accepted")
+	}
+	if err := a.FocusJog(-3); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := s.Wait(func(m fake.Msg) bool { return fake.Is("Focuser", "Move")(m) && m["Value"] == -3.0 }, time.Second); !ok {
+		t.Fatal("jog out not sent")
+	}
+	dropped := len(s.Received())
+	s.DropAll()
+	rec.wait(t, "conn", func(d any) bool { return !d.(Conn).Connected && d.(Conn).Host != "" })
+	// The first focuser move on the new link is the stop.
+	var first fake.Msg
+	for end := time.Now().Add(3 * time.Second); first == nil && time.Now().Before(end); time.Sleep(5 * time.Millisecond) {
+		for _, m := range s.Received()[dropped:] {
+			if fake.Is("Focuser", "Move")(m) {
+				first = m
+
+				break
+			}
+		}
+	}
+	if first == nil || first["Value"] != 0.0 {
+		t.Fatalf("first focuser move after reconnect %v, want Move 0", first)
+	}
+	setTask(t, a, s, fake.Msg{"State": "FOCUSING"})
+	if a.FocusJog(1) == nil {
+		t.Error("jog while busy accepted")
+	}
+}
+
+// An Origin set to save its final image as JPEG 2000 (SetFsmFormat "jp2")
+// sends one Nightglass cannot show: the file is kept as it came, and the
+// toast says so.
+func TestFinalJPEG2000Kept(t *testing.T) {
+	a, rec, s := connected(t)
+	jp2 := []byte("\x00\x00\x00\x0cjP  \r\n\x87\nrest of the file")
+	s.SetFile("FinalStackedMaster.jp2", jp2)
+	s.Notify("ImageServer", "NewImageReady", fake.Msg{"FileLocation": "FinalStackedMaster.jp2", "ImageType": "FINAL_STACKED_MASTER", "ObjectName": "M 42"})
+	rec.wait(t, "toast", func(d any) bool { return strings.Contains(d.(Toast).Message, "JPEG 2000") })
+	files, _ := filepath.Glob(filepath.Join(a.Settings().SaveDir, "*.jp2"))
+	if len(files) != 1 {
+		t.Fatalf("saved %v", files)
+	}
+	if b, _ := os.ReadFile(files[0]); !bytes.Equal(b, jp2) || filepath.Base(files[0]) != "M_42-20260115-220000.jp2" {
+		t.Errorf("%s: kept %q", files[0], b)
 	}
 }
 

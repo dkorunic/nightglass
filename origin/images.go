@@ -16,6 +16,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"sync"
 
@@ -25,6 +26,11 @@ import (
 // ErrNotImage is a download that is not JPEG, PNG or TIFF (such as an
 // HTML error page).
 var ErrNotImage = errors.New("origin: not an image")
+
+// ErrJPEG2000 is an ErrNotImage that is a JPEG 2000 file, as a final image
+// is when the Origin is set to save "jp2" (ImageServer/SetFsmFormat): a
+// real image this package cannot decode, so the caller keeps the file.
+var ErrJPEG2000 = fmt.Errorf("%w (JPEG 2000)", ErrNotImage)
 
 const maxImage = 256 << 20
 
@@ -75,9 +81,8 @@ func (p *progressReader) Read(b []byte) (int, error) {
 	return n, err
 }
 
-// FetchFileProgress is FetchFile, calling progress (when not nil) as bytes
-// arrive with the size the telescope announced (0 when unknown).
-func FetchFileProgress(ctx context.Context, hc *http.Client, host, location string, progress func(done, total int64)) ([]byte, error) {
+// get requests a file the telescope serves; the caller closes the body.
+func get(ctx context.Context, hc *http.Client, host, location string) (*http.Response, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, FileURL(host, location), nil)
 	if err != nil {
 		return nil, err
@@ -86,10 +91,50 @@ func FetchFileProgress(ctx context.Context, hc *http.Client, host, location stri
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
+		_ = resp.Body.Close()
+
 		return nil, fmt.Errorf("origin: GET %s: %s", location, resp.Status)
 	}
+
+	return resp, nil
+}
+
+// FetchToFile streams a file the telescope serves into dst, through
+// dst+".part" so a broken download leaves no partial file: for files too
+// large to hold in memory, such as a folder's ZIP with its raw frames.
+func FetchToFile(ctx context.Context, hc *http.Client, host, location, dst string) error {
+	resp, err := get(ctx, hc, host, location)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	tmp := dst + ".part"
+	f, err := os.Create(tmp)
+	if err != nil {
+		return err
+	}
+	_, err = io.Copy(f, resp.Body)
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	if err != nil {
+		_ = os.Remove(tmp)
+
+		return err
+	}
+
+	return os.Rename(tmp, dst)
+}
+
+// FetchFileProgress is FetchFile, calling progress (when not nil) as bytes
+// arrive with the size the telescope announced (0 when unknown).
+func FetchFileProgress(ctx context.Context, hc *http.Client, host, location string, progress func(done, total int64)) ([]byte, error) {
+	resp, err := get(ctx, hc, host, location)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
 	var body io.Reader = resp.Body
 	if progress != nil {
 		body = &progressReader{r: resp.Body, total: max(resp.ContentLength, 0), report: progress}
@@ -139,21 +184,27 @@ func decode(info ImageReady, b []byte, stretch bool, crop int) (Frame, error) {
 		f.DisplayType = "image/jpeg"
 	case bytes.HasPrefix(b, []byte("\x89PNG\r\n\x1a\n")):
 		f.DisplayType = pngType
+		// A final image saved as PNG (SetFsmFormat "png") is a 16-bit
+		// master: stretched as a TIFF one is; other PNGs show as they are.
+		if stretch && isMaster(info) {
+			if img, err := png.Decode(bytes.NewReader(b)); err == nil && deep(img) {
+				return shown(f, cropped(AutoStretch(img, orNeg(info.StretchStrength), orNeg(info.StretchBackground)), crop))
+			}
+		}
 	case bytes.HasPrefix(b, []byte("II*\x00")), bytes.HasPrefix(b, []byte("MM\x00*")):
 		img, err := tiff.Decode(bytes.NewReader(b))
 		if err != nil {
 			return Frame{}, fmt.Errorf("%w: %s: %w", ErrNotImage, info.FileLocation, err)
 		}
-		switch img.(type) {
-		case *image.Gray16, *image.RGBA64, *image.NRGBA64:
-			// A master deeper than 8 bits is stretched, as the app's
-			// processUIImage does (only masters go through it).
-			if stretch && (info.ImageType == "STACKED_MASTER" || info.ImageType == "FINAL_STACKED_MASTER") {
-				img = AutoStretch(img, orNeg(info.StretchStrength), orNeg(info.StretchBackground))
-			}
+		// A master deeper than 8 bits is stretched, as the app's
+		// processUIImage does (only masters go through it).
+		if stretch && isMaster(info) && deep(img) {
+			img = AutoStretch(img, orNeg(info.StretchStrength), orNeg(info.StretchBackground))
 		}
 
 		return shown(f, cropped(img, crop))
+	case bytes.HasPrefix(b, []byte("\x00\x00\x00\x0cjP  ")), bytes.HasPrefix(b, []byte("\xff\x4f\xff\x51")):
+		return Frame{}, fmt.Errorf("%w: %s", ErrJPEG2000, info.FileLocation)
 	default:
 		return Frame{}, fmt.Errorf("%w: %s", ErrNotImage, info.FileLocation)
 	}
@@ -162,6 +213,20 @@ func decode(info ImageReady, b []byte, stretch bool, crop int) (Frame, error) {
 	}
 
 	return f, nil
+}
+
+func isMaster(info ImageReady) bool {
+	return info.ImageType == "STACKED_MASTER" || info.ImageType == "FINAL_STACKED_MASTER"
+}
+
+// deep reports whether img has more than 8 bits per sample.
+func deep(img image.Image) bool {
+	switch img.(type) {
+	case *image.Gray16, *image.RGBA64, *image.NRGBA64:
+		return true
+	}
+
+	return false
 }
 
 // shown is f displaying img as an uncompressed PNG.

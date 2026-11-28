@@ -172,6 +172,11 @@ func (a *App) UpdateOrigin() error {
 		if us.Status == "UPDATE_DOWNLOADING" || us.Status == "UPDATE_INSTALLING" {
 			return errors.New("an update is already in progress")
 		}
+		// Asked again: the connect-time answer goes stale when the Origin
+		// joins a network later (its Network/InternetStatus pushes say so;
+		// not app parity, the app reads its cached answer). The reply
+		// refreshes Last; a failed ask leaves the cached one.
+		_, _ = c.Send(context.Background(), "Network", "HasInternetConnection", nil)
 		var net struct{ Value *bool }
 		if m, ok := c.Last("Network/HasInternetConnection"); ok {
 			_ = m.Decode(&net)

@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/dkorunic/nightglass/origin"
 )
@@ -128,6 +129,44 @@ func (a *App) DiscardSnapshot() {
 	a.refresh()
 }
 
+// SetCooling switches a cooled camera's cooler (Camera/SetCooling, as
+// Celestron's web app; the app's cameras have none): on, it cools to
+// targetC. The choice itself is a preference the frontend saves.
+func (a *App) SetCooling(on bool, targetC float64) error {
+	if err := inRange("cooling target", targetC, coolingMin, coolingMax); err != nil {
+		return err
+	}
+
+	return a.with(func(c *origin.Client) error {
+		if ci, _ := c.CameraInfo(); !ci.HasCooling {
+			return errors.New("this camera has no cooler")
+		}
+		p := map[string]any{"CoolingEnabled": on}
+		if on {
+			p["TemperatureTarget"] = targetC
+		}
+		_, err := c.Send(context.Background(), "Camera", "SetCooling", p)
+
+		return err
+	})
+}
+
+// coolOnConnect sends the saved cooling choice once the camera reports a
+// cooler, as the web app does on GetCameraInfo (the Origin keeps none of
+// its own across restarts).
+func (a *App) coolOnConnect(c *origin.Client) {
+	for range 100 {
+		if ci, ok := c.CameraInfo(); ok {
+			if s := a.Settings(); ci.HasCooling && s.Cooling {
+				_ = a.SetCooling(true, s.CoolingTargetC)
+			}
+
+			return
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+}
+
 // CenterHere recenters the telescope on a point of the image, x and y in
 // 0..1 from the left and top (the app's reframe crosshair): only while
 // idle and initialized, and not in snapshot mode.
@@ -142,8 +181,16 @@ func (a *App) CenterHere(x, y float64) error {
 	if !ready(c) || a.Settings().Snapshot || a.Activity().MasterBusy {
 		return errShown // the app's reframe button is disabled then
 	}
+	x = min(max(x, 0), 1)
+	// With MirrorFlip the Origin flips images left-right before sending them,
+	// but OffsetX is in the unflipped sensor frame (Celestron's web app,
+	// liveview.js; not in the app, which never reads Optics).
+	var optics struct{ MirrorFlip bool }
+	if m, ok := c.Last("Optics/GetConfiguration"); ok && m.Decode(&optics) == nil && optics.MirrorFlip {
+		x = 1 - x
+	}
 	if _, err := c.Send(context.Background(), "TaskController", "RunCenterTarget", map[string]any{
-		"OffsetX": min(max(x, 0), 1), "OffsetY": min(max(y, 0), 1),
+		"OffsetX": x, "OffsetY": min(max(y, 0), 1),
 	}); err != nil {
 		return err
 	}

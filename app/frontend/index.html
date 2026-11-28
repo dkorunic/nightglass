@@ -122,6 +122,11 @@
         <button class="needs-conn focus-ctl" data-step="2">+100</button>
         <button class="needs-conn focus-ctl" id="autofocus">Auto</button>
       </div>
+      <!-- Hold to run the focuser (Focuser/Move, Celestron's web app's Move In/Out). -->
+      <div class="row">
+        <button class="needs-conn focus-ctl" data-jog="2" title="Hold to move the focuser in">Hold: In</button>
+        <button class="needs-conn focus-ctl" data-jog="-2" title="Hold to move the focuser out">Hold: Out</button>
+      </div>
     </aside>
 
     <section id="targets">
@@ -292,9 +297,19 @@
       <fieldset><legend>Environment</legend>
         <button id="recalibrate" type="button">Recalibrate Environment Sensor</button>
       </fieldset>
+      <!-- A cooled camera only (GetCameraInfo HasCooling, the Origin-585C-TEC). -->
+      <fieldset id="cooling-section" hidden><legend>Camera Cooling</legend>
+        <label class="check"><input name="cooling" type="checkbox"> Cooler On</label>
+        <label>Target Temperature (°C)<input name="coolingtarget" type="number" min="-30" max="30" step="1"></label>
+      </fieldset>
       <fieldset><legend>Images</legend>
         <label class="check"><input name="postprocess" type="checkbox"> AI Post Process</label>
         <label class="check"><input name="autocrop" type="checkbox"> Auto-Crop Images</label>
+        <!-- The Origin's own setting (ImageServer/SetFsmFormat); JPEG 2000 shows only when set elsewhere. -->
+        <label>Final Image Format<select name="finalformat">
+          <option value="tif">TIFF</option><option value="png">PNG</option>
+          <option value="jp2" disabled>JPEG 2000 (not shown by Nightglass)</option>
+        </select></label>
       </fieldset>
       <fieldset><legend>Mosaics</legend>
         <label class="check"><input name="mosaicflatten" type="checkbox"> Flatten Backgrounds</label>

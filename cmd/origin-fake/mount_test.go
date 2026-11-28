@@ -82,7 +82,7 @@ func TestMountSlew(t *testing.T) {
 	m.step() // the tracked position (precessed) first
 	alt0 := m.alt
 	ra0, dec0 := m.pointing()
-	m.slew(9, 0, false) // up at 4°/s
+	m.slew(9, 0) // up at 4°/s
 	*now = now.Add(2 * time.Second)
 	m.step()
 	if !near(m.alt, alt0+8, 0.01) {
@@ -92,7 +92,7 @@ func TestMountSlew(t *testing.T) {
 	if ra, dec := m.pointing(); math.Hypot(wrap(ra-ra0)*math.Cos(dec*math.Pi/180), dec-dec0) < 7.9 {
 		t.Errorf("RA/Dec moved %v/%v for an 8° slew", wrap(ra-ra0), dec-dec0)
 	}
-	m.slew(0, 0, false)
+	m.slew(0, 0)
 	alt := m.alt
 	*now = now.Add(2 * time.Second)
 	m.step()
@@ -100,14 +100,10 @@ func TestMountSlew(t *testing.T) {
 		t.Errorf("alt %v after stopping, want about %v", m.alt, alt)
 	}
 	// Down never goes below -10°.
-	m.slew(-9, 0, false)
+	m.slew(-9, 0)
 	*now = now.Add(time.Minute)
 	m.step()
 	if m.alt != -10 {
 		t.Errorf("alt %v, want the -10° stop", m.alt)
-	}
-	m.slew(0, 0, true)
-	if m.altRate != 0 {
-		t.Error("AbortAxisMovement did not stop")
 	}
 }

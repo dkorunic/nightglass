@@ -6,7 +6,7 @@ import { Browser, Events } from "/wails/runtime.js";
 import { sliderLabels, $, $$, act, call, choice, confirmBox, showAlert, toast } from "./ui.js";
 import {
   composeButton, mosaicAction, mosaicDetail, mosaicSize, tileStatus,
-  adjustPixels, angle, batteryPercent, calendar, clock, batteryText, cameraLocks, canCancel, canFinish, captureLabel, chargerText, cropRect, CROP_RATIOS, darkMessage, dewText, dms, envText, fileStatus, filterLabel, focusSteps, freeSpace, gotoMode, guiderText,
+  adjustPixels, angle, batteryPercent, batteryTemp, cameraExtra, calendar, clock, batteryText, cameraLocks, canCancel, canFinish, captureLabel, chargerText, cropRect, CROP_RATIOS, darkMessage, dewText, dms, envText, fileStatus, filterLabel, focusSteps, freeSpace, gotoMode, guiderText,
   isImagingState, known, latLon, offsetIn, prepare, rateSpeed, reframeText, serial, stretchLabel, targetFor, updateButton, updateText, view,
   sliderEdit, stretchEnabled, tonightRows, zoomAt,
 } from "./targets.js";
@@ -194,7 +194,7 @@ function applyStatus(k, f) {
       set("#st-az", angle(f.Azm, false, true, settings.CoordFormat));
       {
         const pct = batteryPercent(f.BatteryVoltage); // an estimate from the voltage
-        set("#st-battery", `${batteryText(f.BatteryLevel)}${f.BatteryVoltage ? `, ${f.BatteryVoltage.toFixed(1)} V` : ""}${pct != null ? ` (~${pct}%)` : ""}`);
+        set("#st-battery", `${batteryText(f.BatteryLevel)}${f.BatteryVoltage ? `, ${f.BatteryVoltage.toFixed(1)} V` : ""}${pct != null ? ` (~${pct}%)` : ""}${batteryTemp(f.BatteryTemperature)}`);
       }
       set("#st-charger", chargerText(f.ChargerStatus));
       // What the mount itself was told at initialization, as ScopeStatusFragment.
@@ -246,7 +246,7 @@ function applyStatus(k, f) {
       updateFilesStatus();
       break;
     case "Camera/GetCaptureParameters":
-      camera.params = `${f.Exposure ?? "?"} s, ISO ${f.ISO ?? "?"}`;
+      camera.params = `${f.Exposure ?? "?"} s, ISO ${f.ISO ?? "?"}${cameraExtra(f)}`;
       set("#st-camera", `${camera.params}${camera.mode}`);
       break;
     case "LiveStream/GetEnableManual":
@@ -581,6 +581,23 @@ $("#slew-stop").onclick = () => { slewing = true; stopSlew(); };
 // Losing focus mid-slew must not leave the mount running (spec §5).
 window.addEventListener("blur", stopSlew);
 document.addEventListener("visibilitychange", () => document.hidden && stopSlew());
+// The focuser runs while a jog button is held, and stops as a slew does.
+let jogging = false;
+async function stopJog() {
+  if (!jogging) return;
+  jogging = false;
+  await motion(() => act("FocusJog", 0));
+}
+$$("[data-jog]").forEach((b) => {
+  b.onpointerdown = () => {
+    if (!connected || lastTask.State !== "IDLE") return;
+    jogging = true;
+    motion(() => act("FocusJog", Number(b.dataset.jog)));
+  };
+  b.onpointerup = b.onpointerleave = b.onpointercancel = stopJog;
+});
+window.addEventListener("blur", stopJog);
+document.addEventListener("visibilitychange", () => document.hidden && stopJog());
 
 const ARROWS = { ArrowUp: [1, 0], ArrowDown: [-1, 0], ArrowLeft: [0, -1], ArrowRight: [0, 1] };
 export const typing = (e) => e.target.closest("input, select, textarea, dialog");

@@ -163,6 +163,8 @@ type App struct {
 	// Per connection, reset by Connect.
 	run          string       // Uuid of the run this app started
 	logs         string       // the logs button's text while logs are fetched
+	zipFolder    string       // the folder DownloadFolderZip waits on
+	lastFailure  string       // the task failure last shown from TaskController status
 	timedRun     string       // a timed run's Uuid, until it ends and its final image is asked for
 	timedHost    string       // the Origin running it: a reconnect to it keeps the timer
 	composition  string       // the CompositionUuid of a mosaic being composed
@@ -189,6 +191,7 @@ type App struct {
 	connecting  bool       // a ConnectOrigin runs (mu)
 	heldDisplay bool       // the held inhibitor keeps the display on (actMu)
 	slewing     bool
+	jogging     bool // a FocusJog is owed a stop
 	calWarned   bool // "Factory Calibration Incomplete" shown, once per run
 
 	initDone bool // the last task status was a completed initialization
@@ -424,6 +427,7 @@ func (a *App) Connect(host string) error {
 		a.mu.Lock()
 		current := a.client == c
 		stopSlew := current && ok && a.slewing
+		stopJog := current && ok && a.jogging
 		a.mu.Unlock()
 		// A replaced client's late dial must not reach the GUI or the mount.
 		if !current {
@@ -450,6 +454,16 @@ func (a *App) Connect(host string) error {
 		a.refresh()
 		if ok {
 			go a.onConnected(c)
+		}
+		// A drop mid-jog may leave the focuser running: stop it first thing.
+		if stopJog {
+			go func() {
+				if c.FocusMove(context.Background(), 0) == nil {
+					a.mu.Lock()
+					a.jogging = false
+					a.mu.Unlock()
+				}
+			}()
 		}
 		// A drop mid-slew may leave the mount moving: stop it first thing.
 		if stopSlew {
@@ -548,7 +562,7 @@ func (a *App) Disconnect() {
 // must not wait for that.
 func (a *App) disconnect() <-chan struct{} {
 	a.mu.Lock()
-	c, stop, owed, done := a.client, a.stop, a.slewing, a.fwdDone
+	c, stop, owed, jog, done := a.client, a.stop, a.slewing, a.jogging, a.fwdDone
 	a.client, a.stop, a.fwdDone = nil, nil, nil
 	a.gen++
 	if stop != nil {
@@ -556,7 +570,7 @@ func (a *App) disconnect() <-chan struct{} {
 		// the link (a drop does this in OnState; this one stops it first).
 		a.resetLink(false)
 	}
-	a.transferPct, a.logs = nil, "" // the telescope's progress ends with the link
+	a.transferPct, a.logs, a.zipFolder = nil, "", "" // the telescope's progress ends with the link
 	a.mu.Unlock()
 	if stop == nil {
 		return nil
@@ -566,6 +580,15 @@ func (a *App) disconnect() <-chan struct{} {
 		if c.StopSlew(ctx) == nil {
 			a.mu.Lock()
 			a.slewing = false
+			a.mu.Unlock()
+		}
+		cancel()
+	}
+	if jog && c.Connected() {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		if c.FocusMove(ctx, 0) == nil {
+			a.mu.Lock()
+			a.jogging = false
 			a.mu.Unlock()
 		}
 		cancel()
@@ -642,6 +665,10 @@ func (a *App) forward(ctx context.Context, c *origin.Client, sub <-chan origin.M
 		case m := <-sub:
 			key := m.Key() // built once, not by each case below
 			a.logsMessage(ctx, c, m)
+			a.zipMessage(ctx, c, m)
+			if key == "TaskController/GetStatus" {
+				m = a.taskFailure(m) //nolint:contextcheck // as originError
+			}
 			switch {
 			case m.ErrorCode != 0 && origin.Localized(m.ErrorCode):
 				// The app's relay shows these and keeps them from its screens.
@@ -710,6 +737,32 @@ func (a *App) forward(ctx context.Context, c *origin.Client, sub <-chan origin.M
 			a.refresh()
 		}
 	}
+}
+
+// taskFailure handles a TaskController status that reports a task ending
+// early (ErrorCode beside its State, repeated in each ~1 Hz push until the
+// next task): the failure goes to the relay once, not every second, and the
+// status is returned without it, so its State is taken like any other. A
+// clean status ends the failure; the same one after it is shown again.
+// Not app parity: Celestron's web app dedupes these pushes the same way.
+func (a *App) taskFailure(m origin.Message) origin.Message {
+	a.mu.Lock()
+	if m.ErrorCode == 0 {
+		a.lastFailure = ""
+		a.mu.Unlock()
+
+		return m
+	}
+	sig := fmt.Sprint(m.ErrorCode, " ", m.ErrorMessage)
+	repeat := a.lastFailure == sig
+	a.lastFailure = sig
+	a.mu.Unlock()
+	if !repeat {
+		a.originError(m)
+	}
+	m.ErrorCode, m.ErrorMessage = 0, ""
+
+	return m
 }
 
 // originError is the app's onOriginMessageRelay for an error-coded
@@ -946,6 +999,7 @@ func (a *App) onConnected(c *origin.Client) {
 	}
 	_ = c.Post(context.Background(), "System", "HasUpdateAvailable", map[string]any{"ForceCheck": true})
 	go a.offerUpdateOnConnect(c) // handleOriginTelescopeConnectionOpened
+	go a.coolOnConnect(c)
 	for range 60 {
 		_, okc := c.CameraInfo()
 		_, okm := c.MountConfig()
@@ -1091,6 +1145,9 @@ func (a *App) download(ctx context.Context, c *origin.Client, kind string, info 
 		if kind == kindSnapshot {
 			a.emit("toast", Toast{toastError, "Unable to load Image"})
 		}
+		if kind == kindFinal && errors.Is(err, origin.ErrJPEG2000) {
+			a.keepFinalFile(info, b, ".jp2")
+		}
 
 		return
 	}
@@ -1147,6 +1204,26 @@ func (a *App) setDownloading(kind string, info *origin.ImageReady) {
 	}
 	a.mu.Unlock()
 	a.refresh()
+}
+
+// keepFinalFile saves a final image Nightglass cannot show (an Origin set to
+// JPEG 2000 by ImageServer/SetFsmFormat) into SaveDir as it came, named as
+// saveFrame names a final image, so the run is not lost. Not app parity: the
+// app only ever receives TIFF.
+func (a *App) keepFinalFile(info origin.ImageReady, b []byte, ext string) {
+	s := a.Settings()
+	name := safeName(info.ObjectName, safeName(info.Uuid, "origin")) + "-" + a.now().In(siteZone(s)).Format("20060102-150405")
+	err := os.MkdirAll(s.SaveDir, 0o755)
+	p := ""
+	if err == nil {
+		p, err = writeNew(filepath.Join(s.SaveDir, name), ext, b)
+	}
+	if err != nil {
+		a.emit("toast", Toast{toastError, "Unable to save the JPEG 2000 final image: " + err.Error()})
+
+		return
+	}
+	a.emit("toast", Toast{toastWarn, "Saved " + p + " (JPEG 2000, which Nightglass cannot show; set Origin → Final Image Format to TIFF or PNG)"})
 }
 
 // autoSave saves a final master as it arrives, as the app's

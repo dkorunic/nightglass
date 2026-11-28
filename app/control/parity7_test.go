@@ -146,3 +146,61 @@ func TestSnapshotDownloadFailure(t *testing.T) {
 	s.Notify("ImageServer", "NewImageReady", fake.Msg{"FileLocation": "snap/missing.jpg", "ImageType": "SAMPLE_CAPTURE"})
 	rec.wait(t, "toast", func(d any) bool { return d.(Toast).Message == "Unable to load Image" })
 }
+
+// A cooled camera (the Origin-585C-TEC, HasCooling) is cooled as Celestron's
+// web app does: Camera/SetCooling with CoolingEnabled and, when on,
+// TemperatureTarget; the choice is a Nightglass preference, sent again on
+// each connect. A camera without a cooler is not sent one.
+func TestCameraCooling(t *testing.T) {
+	a, _, s := connectedTo(t, func(s *fake.Server) {
+		s.SetInfo("Camera/GetCameraInfo", fake.Msg{"HasCooling": true})
+	})
+	cl, _ := a.cl()
+	for end := time.Now().Add(2 * time.Second); time.Now().Before(end); time.Sleep(5 * time.Millisecond) {
+		if ci, _ := cl.CameraInfo(); ci.HasCooling {
+			break
+		}
+	}
+	if len(received(s, "Camera", "SetCooling")) != 0 {
+		t.Error("cooling sent before it was chosen")
+	}
+	if err := a.SetCooling(true, -5); err != nil {
+		t.Fatal(err)
+	}
+	if m := lastSent(t, s, "Camera", "SetCooling"); m["CoolingEnabled"] != true || m["TemperatureTarget"] != -5.0 {
+		t.Errorf("SetCooling %v", m)
+	}
+	if err := a.SetCooling(false, -5); err != nil {
+		t.Fatal(err)
+	}
+	if m := lastSent(t, s, "Camera", "SetCooling"); m["CoolingEnabled"] != false || m["TemperatureTarget"] != nil {
+		t.Errorf("SetCooling off %v", m)
+	}
+	if a.SetCooling(true, -40) == nil {
+		t.Error("a -40 °C target accepted")
+	}
+	// Chosen, it is sent again on the next connect.
+	setSettings(t, a, func(s *Settings) { s.Cooling, s.CoolingTargetC = true, -10 })
+	n := len(received(s, "Camera", "SetCooling"))
+	if err := a.Connect(s.Host()); err != nil {
+		t.Fatal(err)
+	}
+	m, ok := s.Wait(func(m fake.Msg) bool {
+		return fake.Is("Camera", "SetCooling")(m) && len(received(s, "Camera", "SetCooling")) > n
+	}, 3*time.Second)
+	if !ok || m["CoolingEnabled"] != true {
+		t.Fatalf("cooling not sent on connect: %v", m)
+	}
+	if m := lastSent(t, s, "Camera", "SetCooling"); m["TemperatureTarget"] != -10.0 {
+		t.Errorf("SetCooling on connect %v", m)
+	}
+	// Without a cooler: refused, and nothing is sent on connect.
+	b, _, s2 := connected(t)
+	setSettings(t, b, func(s *Settings) { s.Cooling = true })
+	if b.SetCooling(true, 0) == nil {
+		t.Error("cooling a camera without a cooler accepted")
+	}
+	if len(received(s2, "Camera", "SetCooling")) != 0 {
+		t.Error("SetCooling sent to a camera without a cooler")
+	}
+}

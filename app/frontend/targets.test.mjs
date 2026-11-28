@@ -4,7 +4,7 @@
 // Run: node --test app/frontend/targets.test.mjs
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { CROP_RATIOS, composeButton, mosaicAction, mosaicDetail, mosaicSize, shareExposure, tileKind, tileStatus, adjustPixels, batteryPercent, batteryText, cameraLocks, canCancel, canFinish, captureLabel, chargerText, cropRect, darkMessage, dewText, dms, envText, fileStatus, filterLabel, focusSteps, gotoMode, guiderText, isImagingState, key, latLon, offsetIn, polarText, prepare, rateSpeed, reframeText, serial, sexa, sliderEdit, stretchEnabled, stretchLabel, targetFor, updateButton, updateText, view, zoomAt , polarOffset, angle, clock, calendar, tonightRows } from "./targets.js";
+import { CROP_RATIOS, batteryTemp, cameraExtra, composeButton, mosaicAction, mosaicDetail, mosaicSize, shareExposure, tileKind, tileStatus, adjustPixels, batteryPercent, batteryText, cameraLocks, canCancel, canFinish, captureLabel, chargerText, cropRect, darkMessage, dewText, dms, envText, fileStatus, filterLabel, focusSteps, gotoMode, guiderText, isImagingState, key, latLon, offsetIn, polarText, prepare, rateSpeed, reframeText, serial, sexa, sliderEdit, stretchEnabled, stretchLabel, targetFor, updateButton, updateText, view, zoomAt , polarOffset, angle, clock, calendar, tonightRows } from "./targets.js";
 
 test("sexa", () => {
   assert.equal(sexa("5 35 17"), 5 + 35 / 60 + 17 / 3600);
@@ -181,6 +181,23 @@ test("status screen dew and weather", () => {
   assert.equal(dewText({ Mode: "Auto", ManualPowerLevel: 0.5, HeaterLevel: 0.2 }), "Automatic, power –");
   assert.equal(dewText({ Mode: "Manual", ManualPowerLevel: 0.42 }), "Manual, power 42 %");
   assert.equal(envText({ AmbientTemperature: 12.5, Humidity: 61, DewPoint: 5.234 }), "12.50 °C, 61%, dew point 5.23 °C");
+  // The telescope and CPU temperatures, when reported (as Celestron's web app shows them).
+  assert.equal(envText({ AmbientTemperature: 12.5, Humidity: 61, DewPoint: 5.234, FrontCellTemperature: 11.35, CpuTemperature: 42.84 }),
+    "12.50 °C, 61%, dew point 5.23 °C, telescope 11.35 °C, CPU 42.84 °C");
+});
+
+test("status extras from firmware 1.5.6286", () => {
+  // The autoguider's last corrections.
+  assert.equal(guiderText({ IsGuiding: true, RaError: 0.1, DecError: 0.2, RaCorrection: 0.31, DecCorrection: -0.05 }),
+    "Guiding, RA err 0.10, Dec err 0.20, RA corr 0.31, Dec corr -0.05");
+  // The camera's temperature and a cooled camera's cooler power.
+  assert.equal(cameraExtra({}), "");
+  assert.equal(cameraExtra({ Temperature: -4.96, PowerLevel: 0.427 }), ", -5.0 °C, cooler 43%");
+  assert.equal(cameraExtra({ Temperature: 24.3 }), ", 24.3 °C");
+  // A battery temperature of 100 °C or more is no reading (as the web app).
+  assert.equal(batteryTemp(31.26), ", 31.3 °C");
+  assert.equal(batteryTemp(100), "");
+  assert.equal(batteryTemp(undefined), "");
 });
 
 // The same hand-worked values as Go's TestApplyEditLikeApp.

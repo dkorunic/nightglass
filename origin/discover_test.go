@@ -57,6 +57,37 @@ func TestListen(t *testing.T) {
 	}
 }
 
+// An Origin on Wi-Fi and Ethernet announces each address with one identity
+// (wifi-controller's udpBroadcastThread): it is one telescope, listed at the
+// first address heard.
+func TestListenOneIdentity(t *testing.T) {
+	pc, err := net.ListenPacket("udp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pc.Close()
+	tx, err := net.Dial("udp4", pc.LocalAddr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Close()
+	for _, m := range []string{
+		"Identity:Origin-140020Z Origin IP Address = 192.168.4.7",
+		"Identity:Origin-140020Z Origin IP Address = 10.0.0.9",
+		"Identity:Origin-150030Z Origin IP Address = 10.0.0.10",
+		"Identity: Origin IP Address = 10.0.0.11", // no identity: by address
+		"Identity: Origin IP Address = 10.0.0.12",
+	} {
+		_, _ = tx.Write([]byte(m))
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+	want := []string{"192.168.4.7", "10.0.0.10", "10.0.0.11", "10.0.0.12"}
+	if got := Listen(ctx, pc); !slices.Equal(got, want) {
+		t.Errorf("got %v, want %v", got, want)
+	}
+}
+
 // What users type into the manual address box (Review Focus).
 func TestNormalizeHost(t *testing.T) {
 	for in, want := range map[string]string{

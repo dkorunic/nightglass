@@ -55,6 +55,34 @@ func connect(t *testing.T, s *fake.Server, cfg func(*Client)) *Client {
 	return c
 }
 
+// A link that goes silent (Wi-Fi gone without a TCP close) is dropped after
+// five poll intervals, so the caller reconnects; the Origin's own web app
+// calls the link dead after 4 s without a TaskController status.
+func TestSilentLinkDropped(t *testing.T) {
+	s := newFake(t)
+	s.SetHandle(func(fake.Msg) fake.Msg { return nil })
+	drops := make(chan error, 4)
+	connect(t, s, func(c *Client) {
+		c.PollInterval = 20 * time.Millisecond
+		c.OnState = func(ok bool, err error) {
+			if !ok {
+				select {
+				case drops <- err:
+				default:
+				}
+			}
+		}
+	})
+	select {
+	case err := <-drops:
+		if !errors.Is(err, ErrSilent) {
+			t.Errorf("dropped with %v, want ErrSilent", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("a silent link was never dropped")
+	}
+}
+
 func TestSendRoutesOutOfOrderResponses(t *testing.T) {
 	s := newFake(t)
 	s.SetHandle(func(req fake.Msg) fake.Msg {

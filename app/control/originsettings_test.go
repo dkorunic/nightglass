@@ -87,6 +87,15 @@ func TestOriginSettingsRead(t *testing.T) {
 // Y: each setting sends what the app sends.
 func TestOriginSettingsWrite(t *testing.T) {
 	a, _, s := connected(t)
+	// The final image format the Origin reports shows; JPEG 2000, which
+	// Nightglass cannot show, is not offered (origin-core takes tif, jp2, png).
+	s.SetInfo("ImageServer/GetFsmFormat", fake.Msg{"Format": "jp2"})
+	if o, _ := a.OriginSettings(); o.FinalFormat != "jp2" {
+		t.Errorf("final format %q, want jp2", o.FinalFormat)
+	}
+	if a.SetFinalFormat("jp2") == nil || a.SetFinalFormat("jpeg") == nil {
+		t.Error("an unshowable final image format accepted")
+	}
 	for _, c := range []struct {
 		do        func() error
 		dest, cmd string
@@ -105,6 +114,7 @@ func TestOriginSettingsWrite(t *testing.T) {
 		{func() error { return a.SetFlatPanel(true) }, "ElPanel", "TurnOnLight", fake.Msg{}},
 		{func() error { return a.SetFlatPanel(false) }, "ElPanel", "TurnOffLight", fake.Msg{}},
 		{func() error { return a.SetFlatPanelLevel(80) }, "ElPanel", "SetLightLevel", fake.Msg{"LightLevel": 80.0}},
+		{func() error { return a.SetFinalFormat("png") }, "ImageServer", "SetFsmFormat", fake.Msg{"Format": "png"}},
 		{a.RecalibrateEnvironmentSensor, "Environment", "RecalibrateEnvironmentSensor", fake.Msg{}},
 		{a.PowerOff, "System", "PowerDownOrigin", fake.Msg{}},
 	} {
@@ -134,6 +144,9 @@ func TestOriginSettingsWrite(t *testing.T) {
 	// Each change is read back.
 	if _, ok := s.Wait(fake.Is("Mount", "GetMountConfig"), time.Second); !ok {
 		t.Error("mount config not read back")
+	}
+	if _, ok := s.Wait(fake.Is("ImageServer", "GetFsmFormat"), time.Second); !ok {
+		t.Error("final image format not read back")
 	}
 	for _, bad := range []func() error{
 		func() error { return a.SetLedRing(1.5) },

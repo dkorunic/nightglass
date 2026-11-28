@@ -101,6 +101,18 @@ func (c *Client) StopSlew(ctx context.Context) error {
 	return c.Slew(ctx, 0, 0)
 }
 
+// FocusMove runs the focuser continuously (Focuser/Move, as Celestron's web
+// app's Move In/Out; not in the app): v in -3..3, positive moving in, 0
+// stopping it.
+func (c *Client) FocusMove(ctx context.Context, v int) error {
+	if v < -3 || v > 3 {
+		return fmt.Errorf("origin: focus speed %d outside -3..3", v)
+	}
+	_, err := c.Send(ctx, "Focuser", "Move", map[string]any{"Value": v})
+
+	return err
+}
+
 // ErrImaging is the native app's DVC_BUSY_ERROR: no go-to or slew while
 // the telescope is imaging.
 var ErrImaging = errors.New("origin: the telescope is busy imaging; stop imaging first")
@@ -243,15 +255,28 @@ func (c *Client) RunImaging(ctx context.Context, im Imaging) error {
 		p["TotalDuration"] = im.TotalDurationSec
 	}
 	if len(im.Track) > 0 {
-		track := make([]map[string]any, len(im.Track))
-		for i, t := range im.Track {
-			track[i] = map[string]any{"Ra": rad(t.RADeg), "Dec": rad(t.DecDeg), "JulianDate": t.JD}
-		}
-		p["TargetTrack"] = track
+		p["TargetTrack"] = wireTrack(im.Track)
 	}
 	_, err := c.Send(ctx, "TaskController", "RunImaging", p)
 
 	return err
+}
+
+// wireTrack is a TargetTrack as the Origin takes it: J2000 radians.
+func wireTrack(track []TrackPoint) []map[string]any {
+	out := make([]map[string]any, len(track))
+	for i, t := range track {
+		out[i] = map[string]any{"Ra": rad(t.RADeg), "Dec": rad(t.DecDeg), "JulianDate": t.JD}
+	}
+
+	return out
+}
+
+// TrackMovingTarget has the mount follow track (Mount/TrackMovingTarget, as
+// Celestron's web app tracks satellites; not used by the app). Not waited
+// for, as GotoRaDec.
+func (c *Client) TrackMovingTarget(ctx context.Context, track []TrackPoint) error {
+	return c.Post(ctx, "Mount", "TrackMovingTarget", map[string]any{"TargetTrack": wireTrack(track)})
 }
 
 // CancelImaging discards the imaging run (the app's cancelImaging); use

@@ -92,6 +92,19 @@ func decodeRef(info ImageReady, b []byte, stretch bool, crop int) (Frame, error)
 		f.DisplayType = "image/jpeg"
 	case bytes.HasPrefix(b, []byte("\x89PNG\r\n\x1a\n")):
 		f.DisplayType = pngType
+		// A 16-bit PNG master (SetFsmFormat "png") is stretched as a TIFF one.
+		img, err := png.Decode(bytes.NewReader(b))
+		if err != nil || !stretch || (info.ImageType != "STACKED_MASTER" && info.ImageType != "FINAL_STACKED_MASTER") {
+			break
+		}
+		switch img.(type) {
+		case *image.Gray16, *image.RGBA64, *image.NRGBA64:
+			var buf bytes.Buffer
+			if err := png.Encode(&buf, autoStretchRef(img, orNeg(info.StretchStrength), orNeg(info.StretchBackground))); err != nil {
+				return Frame{}, err
+			}
+			f.Display = buf.Bytes()
+		}
 	case bytes.HasPrefix(b, []byte("II*\x00")), bytes.HasPrefix(b, []byte("MM\x00*")):
 		img, err := tiff.Decode(bytes.NewReader(b))
 		if err != nil {

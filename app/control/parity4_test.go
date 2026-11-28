@@ -54,6 +54,17 @@ func reportForced(t *testing.T, a *App, s *fake.Server) {
 	}
 	setTask(t, a, s, fake.Msg{"State": st, "IsReady": true})
 	setTask(t, a, s, fake.Msg{"State": "IDLE", "IsReady": true})
+	// setTask waits for the client; the forced state ends when forward has
+	// taken the report too, which may come a moment later.
+	for end := time.Now().Add(2 * time.Second); time.Now().Before(end); time.Sleep(time.Millisecond) {
+		a.mu.Lock()
+		f := a.forced
+		a.mu.Unlock()
+		if f == "" {
+			return
+		}
+	}
+	t.Fatalf("forced state %q not ended", st)
 }
 
 // P: in snapshot mode the capture button takes a snapshot
@@ -179,6 +190,28 @@ func TestCenterHere(t *testing.T) {
 	}
 	if len(received(s, "TaskController", "RunCenterTarget")) != 1 {
 		t.Error("refused reframes were sent")
+	}
+}
+
+// With Optics MirrorFlip the Origin flips images left-right before sending
+// them, but RunCenterTarget's OffsetX is in the unflipped sensor frame, so
+// the crosshair's x is mirrored back (as Celestron's web app, liveview.js).
+func TestCenterHereMirrorFlip(t *testing.T) {
+	a, _, s := connectedTo(t, func(s *fake.Server) {
+		s.SetInfo("Optics/GetConfiguration", fake.Msg{"ModelName": "Custom", "MirrorFlip": true})
+	})
+	c, _ := a.cl()
+	for end := time.Now().Add(2 * time.Second); time.Now().Before(end); time.Sleep(5 * time.Millisecond) {
+		if _, ok := c.Last("Optics/GetConfiguration"); ok {
+			break
+		}
+	}
+	if err := a.CenterHere(0.25, 0.6); err != nil {
+		t.Fatal(err)
+	}
+	m, ok := s.Wait(fake.Is("TaskController", "RunCenterTarget"), time.Second)
+	if !ok || m["OffsetX"] != 0.75 || m["OffsetY"] != 0.6 {
+		t.Fatalf("RunCenterTarget %v", m)
 	}
 }
 

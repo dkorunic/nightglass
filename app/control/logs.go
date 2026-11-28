@@ -15,6 +15,9 @@ import (
 	"github.com/dkorunic/nightglass/origin"
 )
 
+// problemDownload is the app's alert title for a failed download.
+const problemDownload = "Problem with Download"
+
 // Logs is the "logs" event: the logs button's text while logs are being
 // requested, prepared or downloaded, "" once that is over.
 type Logs struct {
@@ -74,7 +77,7 @@ func (a *App) logsMessage(ctx context.Context, c *origin.Client, m origin.Messag
 			p, err := a.saveLogs(ctx, c, lr.DownloadLink)
 			a.setLogs("")
 			if err != nil {
-				a.emit("alert", Alert{"Problem with Download", "Unable to download logs. Please try again."})
+				a.emit("alert", Alert{problemDownload, "Unable to download logs. Please try again."})
 
 				return
 			}

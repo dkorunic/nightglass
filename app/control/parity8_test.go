@@ -205,3 +205,68 @@ func TestReboot(t *testing.T) {
 	}
 	rec.wait(t, "conn", func(d any) bool { return d.(Conn).Connected })
 }
+
+// A task that ends early is reported in TaskController/GetStatus itself:
+// ErrorCode and ErrorMessage beside the State, pushed again each second
+// (Celestron's web app, status.js). The state still counts, the failure is
+// shown once rather than every second, and -7 (INTERRUPTED, after a halt) is
+// not shown at all.
+func TestTaskErrorStatus(t *testing.T) {
+	a, rec, s := connected(t)
+	setTask(t, a, s, fake.Msg{"State": "INITIALIZING"})
+	alerts := func() int {
+		rec.mu.Lock()
+		defer rec.mu.Unlock()
+		n := 0
+		for _, e := range rec.got {
+			if al, ok := e.data.(Alert); ok && e.name == "alert" && al.Title == "Origin Error" {
+				n++
+			}
+		}
+
+		return n
+	}
+	failed := fake.Msg{"State": "IDLE", "ErrorCode": -75, "ErrorMessage": "Sun is above horizon"}
+	for range 3 {
+		s.Notify("TaskController", "GetStatus", failed)
+	}
+	rec.wait(t, "alert", func(d any) bool { return strings.Contains(d.(Alert).Message, "Sun is above horizon") })
+	c, _ := a.cl()
+	for end := time.Now().Add(2 * time.Second); c.TaskState() != "IDLE" && time.Now().Before(end); {
+		time.Sleep(5 * time.Millisecond)
+	}
+	if st := c.TaskState(); st != "IDLE" {
+		t.Errorf("task state %q after a failed task's status, want IDLE", st)
+	}
+	rec.wait(t, "status", func(d any) bool {
+		st := d.(Status)
+
+		return st.Key == "TaskController/GetStatus" && st.Fields["State"] == "IDLE"
+	})
+	time.Sleep(100 * time.Millisecond)
+	if n := alerts(); n != 1 {
+		t.Errorf("%d alerts for one failure pushed three times", n)
+	}
+	// A clean status ends it; the same failure again is shown again.
+	s.Notify("TaskController", "GetStatus", fake.Msg{"State": "IDLE", "ErrorCode": 0})
+	s.Notify("TaskController", "GetStatus", failed)
+	for end := time.Now().Add(2 * time.Second); alerts() < 2 && time.Now().Before(end); {
+		time.Sleep(5 * time.Millisecond)
+	}
+	if n := alerts(); n != 2 {
+		t.Errorf("%d alerts, want the failure shown again after a clean status", n)
+	}
+	// INTERRUPTED is a halted task, not a failure to show.
+	setTask(t, a, s, fake.Msg{"State": "FOCUSING", "ErrorCode": 0})
+	s.Notify("TaskController", "GetStatus", fake.Msg{"State": "IDLE", "ErrorCode": -7, "ErrorMessage": "Interrupted"})
+	for end := time.Now().Add(2 * time.Second); c.TaskState() != "IDLE" && time.Now().Before(end); {
+		time.Sleep(5 * time.Millisecond)
+	}
+	if c.TaskState() != "IDLE" {
+		t.Error("an interrupted task's status was not taken")
+	}
+	time.Sleep(100 * time.Millisecond)
+	if n := alerts(); n != 2 {
+		t.Errorf("INTERRUPTED shown (%d alerts)", n)
+	}
+}

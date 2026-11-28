@@ -12,7 +12,7 @@ type MountStatus struct {
 	Date, Time, TimeZone                                      string
 	Alt, Azm, Ra, Dec                                         float64
 	NumAlignRefs                                              int
-	BatteryVoltage, BatteryCurrent, BatteryTemperature        float64
+	BatteryVoltage, BatteryCurrent                            float64
 	Latitude, Longitude                                       float64
 	IsAligned, IsGotoOver, IsTracking, IsTrackingMovingTarget bool
 }
@@ -27,10 +27,15 @@ type TaskStatus struct {
 		PercentageComplete float64
 		CurrentStep        string // MOVING_MOUNT, ALIGNING, FOCUSING
 	}
-	AlignmentInfo              *struct{ NumPoints *float64 }
-	PolarAlignInfo             *struct{ AzimuthError, AltitudeError float64 }
-	DarkGenerationInfo         *struct{ PercentageComplete float64 }
-	ComposingMosaicInfo        *struct{ PercentComplete *float64 }
+	AlignmentInfo       *struct{ NumPoints *float64 }
+	PolarAlignInfo      *struct{ AzimuthError, AltitudeError float64 }
+	DarkGenerationInfo  *struct{ PercentageComplete float64 }
+	ComposingMosaicInfo *struct{ PercentComplete *float64 }
+	// Progress the app does not read (firmware 1.5.6286 field names, as
+	// Celestron's web app reads them; the spellings differ).
+	FocusInfo, ZipInfo         *struct{ PercentageComplete *float64 }
+	FocuserCalibrationInfo     *struct{ PercentComplete *float64 }
+	FlatGenerationInfo         *struct{ PercentageCompleted *float64 }
 	State, Stage               string
 	ImagingInfo                ImagingInfo
 	IsReady, IsFakeInitialized bool
@@ -88,10 +93,15 @@ type ImageReady struct {
 	StackDepth, ISO, ImageWidth, ImageHeight              int
 }
 
-// CameraInfo is Camera/GetCameraInfo (the fields the exposure rules use).
+// CameraInfo is Camera/GetCameraInfo: the fields the exposure rules use,
+// and the sensor (firmware 1.5.6286 keys; sizes as float64 so a "3840.0"
+// still decodes) for the field before a frame reports one.
 type CameraInfo struct {
-	DefaultIso, MinIso, MaxIso int
-	MinExposure, MaxExposure   float64
+	DefaultIso, MinIso, MaxIso    int
+	MinExposure, MaxExposure      float64
+	MaxImageWidth, MaxImageHeight float64
+	PixelSize                     float64 // µm
+	HasCooling                    bool    // a TEC camera (Origin-585C-TEC): Camera/SetCooling
 }
 
 // MountConfig is Mount/GetMountConfig.

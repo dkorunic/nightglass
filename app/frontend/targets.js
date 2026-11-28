@@ -242,9 +242,26 @@ export function guiderText(f) {
   const parts = [state];
   if (f.RaError != null) parts.push(`RA err ${f.RaError.toFixed(2)}`);
   if (f.DecError != null) parts.push(`Dec err ${f.DecError.toFixed(2)}`);
+  // The last corrections, as Celestron's web app shows them (not in the app).
+  if (f.RaCorrection != null) parts.push(`RA corr ${f.RaCorrection.toFixed(2)}`);
+  if (f.DecCorrection != null) parts.push(`Dec corr ${f.DecCorrection.toFixed(2)}`);
   if (f.GuideStars != null) parts.push(`${f.GuideStars} stars`);
   if (f.Quality != null) parts.push(`quality ${f.Quality}`);
   return parts.join(", ");
+}
+
+// cameraExtra is the camera's sensor temperature and a cooled camera's
+// cooler power (Camera/GetCaptureParameters), appended to its status row;
+// batteryTemp the mount's battery temperature, which the web app takes as no
+// reading from 100 °C (neither is in the app).
+export function cameraExtra(f) {
+  let s = "";
+  if (f.Temperature != null) s += `, ${f.Temperature.toFixed(1)} °C`;
+  if (f.PowerLevel != null) s += `, cooler ${Math.round(f.PowerLevel * 100)}%`;
+  return s;
+}
+export function batteryTemp(t) {
+  return t != null && t < 100 ? `, ${t.toFixed(1)} °C` : "";
 }
 
 // latLon formats a latitude and longitude in radians, as the mount reports
@@ -274,7 +291,11 @@ export function dewText(f) {
 }
 export function envText(f) {
   const t = (v) => (v == null ? "–" : `${v.toFixed(2)} °C`);
-  return `${t(f.AmbientTemperature)}, ${f.Humidity == null ? "–" : `${f.Humidity.toFixed(0)}%`}, dew point ${t(f.DewPoint)}`;
+  let s = `${t(f.AmbientTemperature)}, ${f.Humidity == null ? "–" : `${f.Humidity.toFixed(0)}%`}, dew point ${t(f.DewPoint)}`;
+  // The telescope (front cell) and CPU, as Celestron's web app shows them.
+  if (f.FrontCellTemperature != null) s += `, telescope ${t(f.FrontCellTemperature)}`;
+  if (f.CpuTemperature != null) s += `, CPU ${t(f.CpuTemperature)}`;
+  return s;
 }
 
 // sliderEdit turns the editor's sliders (brightness, contrast and

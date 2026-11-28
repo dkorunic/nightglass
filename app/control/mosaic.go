@@ -82,8 +82,25 @@ func mosaicDuration(typ string) float64 {
 }
 
 // fov is the camera's field (radians) and orientation from the newest
-// frame, else the app's defaults.
+// frame, else the connected camera's sensor field, else the app's defaults.
+// ok is whether a frame reported it (only a frame knows the orientation).
 func (a *App) fov() (x, y, orientation float64, ok bool) {
+	if x, y, o, ok := a.frameFov(); ok {
+		return x, y, o, true
+	}
+	if c, err := a.cl(); err == nil {
+		if ci, have := c.CameraInfo(); have {
+			if x, y, ok := sensorField(ci); ok {
+				return x, y, 0, false
+			}
+		}
+	}
+
+	return defaultFovX, defaultFovY, 0, false
+}
+
+// frameFov is the field and orientation the newest frame reports.
+func (a *App) frameFov() (x, y, orientation float64, ok bool) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	for _, k := range []string{kindLive, kindStacked, kindFinal} {
@@ -92,7 +109,25 @@ func (a *App) fov() (x, y, orientation float64, ok bool) {
 		}
 	}
 
-	return defaultFovX, defaultFovY, 0, false
+	return 0, 0, 0, false
+}
+
+// originFocalMM is the Origin's focal length: the app's default field
+// height is an Origin 178 sensor (2048 × 2.4 µm) at it.
+const originFocalMM = 335.0
+
+// sensorField is the field (radians) of the camera Camera/GetCameraInfo
+// describes, at originFocalMM. Not app parity: the app always plans with its
+// Origin 178 field, which is wrong for an Origin 678C (1.31° × 0.74°) or a
+// 585C (about 1.9° × 1.07°). PixelSize is taken as µm (origin-core logs the
+// sensor's pixel size in um); a value outside 1–20 is not trusted.
+func sensorField(ci origin.CameraInfo) (x, y float64, ok bool) {
+	if ci.MaxImageWidth <= 0 || ci.MaxImageHeight <= 0 || ci.PixelSize < 1 || ci.PixelSize > 20 {
+		return 0, 0, false
+	}
+	rad := ci.PixelSize / 1000 / originFocalMM // per pixel; small angle
+
+	return ci.MaxImageWidth * rad, ci.MaxImageHeight * rad, true
 }
 
 // MosaicPlanFor returns the defaults for a mosaic of target (a catalog row's

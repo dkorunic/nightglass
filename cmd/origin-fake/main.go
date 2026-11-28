@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
+	"github.com/dkorunic/nightglass/origin"
 	"github.com/dkorunic/nightglass/origin/fake"
 )
 
@@ -35,6 +36,8 @@ func main() {
 	announceIv := flag.Duration("announce", 2*time.Second, "UDP discovery announcement interval (0 disables)")
 	reboot := flag.Duration("reboot", 20*time.Second, "how long System/Reboot keeps the fake down")
 	elpanel := flag.Bool("elpanel", false, "report a connected flat panel (ElPanel)")
+	dewheater := flag.Bool("dewheater", true, "report a dew heater (off: DewHeater answers DEW_HEATER_NO_RESPONSE, an assumption)")
+	cooled := flag.Bool("cooled", false, "simulate a cooled camera (Origin-585C-TEC): HasCooling and Camera/SetCooling")
 	survey := flag.String("sky", "", "HiPS survey for frames via CDS hips2fits, e.g. CDS/P/DSS2/color, or legacy:ls-dr10 via the Legacy Survey viewer; a comma-separated list uses the first covering each field, e.g. CDS/P/PanSTARRS/DR1/color-z-zg-g,CDS/P/DSS2/color (empty: procedural stars)")
 	flag.Parse()
 	if l := strings.Split(*survey, ","); slices.ContainsFunc(l[:len(l)-1], func(s string) bool { return strings.HasPrefix(s, "legacy:") }) {
@@ -51,6 +54,15 @@ func main() {
 	if *elpanel {
 		s.SetStatus("ElPanel", fake.Msg{"Connected": true, "LightOn": false, "BrightnessLevel": 50})
 	}
+	if !*dewheater {
+		// Which code a real Origin without one answers is not known; this
+		// one the app has a message for, so the GUI shows what that costs.
+		s.SetAbsent("DewHeater", -19, "No response from the dew heater.") // DEW_HEATER_NO_RESPONSE
+	}
+	if *cooled {
+		s.SetInfo("Camera/GetCameraInfo", fake.Msg{"HasCooling": true})
+		s.SetInfo("Camera/GetCooling", fake.Msg{"CoolingEnabled": false, "TemperatureTarget": 10.0})
+	}
 	s.PingInterval = *ping
 	fmt.Printf("fake Origin at %s (connect the app to this address)\n", s.Host())
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
@@ -65,8 +77,15 @@ func main() {
 		}
 	}
 	if *push {
-		s.OnConnect = func() { pushAll(s) }
-		go pushStatus(ctx, s)
+		mods := []string{"Mount", "Camera", "TaskController", "Environment", "Disk"}
+		if *dewheater {
+			mods = append(mods, "DewHeater")
+		}
+		if *elpanel {
+			mods = append(mods, "ElPanel") // pushed only while the panel is there
+		}
+		s.OnConnect = func() { pushAll(s, mods) }
+		go pushStatus(ctx, s, mods)
 	}
 	if *close1011 > 0 {
 		go func() {
@@ -88,19 +107,26 @@ func main() {
 
 // captured sets status values seen in packet captures of a real Origin
 // (firmware 1.1.4248, as recorded by the OriginSimulator community project):
-// facts about the telescope, not code.
+// facts about the telescope, not code. Focuser keys firmware 1.5.6286 has
+// nowhere, not even inside a longer string (CalibrationLowerLimit,
+// CalibrationUpperLimit, PercentageCalibrationComplete,
+// RequiresCalibration), are left out, so the fake cannot hide a reader of
+// them.
 func captured(s *fake.Server) {
 	s.SetStatus("Mount", fake.Msg{
 		"BatteryLevel": "HIGH", "BatteryVoltage": 10.38, "ChargerStatus": "CHARGING", "NumAlignRefs": 3,
 		"Enc0": 0.0, "Enc1": 0.0, "TimeZone": "Europe/London",
 	})
+	// Fields firmware 1.5.6286 reports that the captures lack (Celestron's
+	// web app reads them); the values are the simulator's.
+	s.SetStatus("Mount", fake.Msg{"BatteryCurrent": 0.42, "BatteryTemperature": 27.5})
 	s.SetStatus("Focuser", fake.Msg{
-		"Position": 18447, "Backlash": 255, "CalibrationLowerLimit": 1975, "CalibrationUpperLimit": 37527,
-		"IsCalibrationComplete": true, "PercentageCalibrationComplete": 100, "NeedAutoFocus": false, "RequiresCalibration": false,
+		"Position": 18447, "Backlash": 255, "IsCalibrationComplete": true, "NeedAutoFocus": false,
 	})
 	s.SetStatus("Camera", fake.Msg{
 		"Binning": 1, "BitDepth": 24, "ColorRBalance": 78.0, "ColorGBalance": 58.0, "ColorBBalance": 120.0,
 		"Exposure": 0.5, "ISO": 2000, "Offset": 0,
+		"Temperature": 24.3, // the camera temperature the captures put in Environment
 	})
 	s.SetStatus("Environment", fake.Msg{
 		"AmbientTemperature": 15.988, "CameraTemperature": 24.3, "CpuTemperature": 42.842, "DewPoint": 8.108,
@@ -112,48 +138,39 @@ func captured(s *fake.Server) {
 	})
 }
 
-// pushes are how often each module's status is pushed: a real Origin
-// pushes them unasked; these intervals are the simulator project's.
-var pushes = []struct {
-	module string
-	every  time.Duration
-}{
-	{"Mount", time.Second},
-	{"Focuser", 2 * time.Second},
-	{"Camera", 3 * time.Second},
-	{"TaskController", 5 * time.Second},
-	{"Environment", 10 * time.Second},
-	{"Disk", 10 * time.Second},
-	{"DewHeater", 15 * time.Second},
-}
+// pushEvery is how often a real Origin pushes the statuses it pushes
+// unasked: about once a second (Celestron's web app for firmware 1.5.6286,
+// which calls a link dead after 4 s without a TaskController status). The
+// Focuser's are pushed only while it moves (moveFocuser), an accessory's only
+// while it is there; Disk's rate is not known and kept slow.
+const pushEvery = time.Second
 
 // pushAll pushes every module's status, as an Origin does just after a
 // client connects.
-func pushAll(s *fake.Server) {
+func pushAll(s *fake.Server, mods []string) {
 	time.Sleep(time.Second)
-	for _, p := range pushes {
-		s.NotifyStatus(p.module)
+	for _, mod := range mods {
+		s.NotifyStatus(mod)
 	}
 }
 
-// pushStatus pushes each module's status on its interval until ctx ends.
-func pushStatus(ctx context.Context, s *fake.Server) {
-	for _, p := range pushes {
-		go func() {
-			t := time.NewTicker(p.every)
-			defer t.Stop()
-			for {
-				select {
-				case <-ctx.Done():
-					return
-				case <-t.C:
-					if p.module == "Environment" {
-						jitter(s)
-					}
-					s.NotifyStatus(p.module)
+// pushStatus pushes mods' statuses every pushEvery (Disk every 10 s) until
+// ctx ends.
+func pushStatus(ctx context.Context, s *fake.Server, mods []string) {
+	t := time.NewTicker(pushEvery)
+	defer t.Stop()
+	for i := 1; ; i++ {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			jitter(s)
+			for _, mod := range mods {
+				if mod != "Disk" || i%10 == 0 {
+					s.NotifyStatus(mod)
 				}
 			}
-		}()
+		}
 	}
 }
 
@@ -196,18 +213,36 @@ func newSim(s *fake.Server, stackIv time.Duration) *sim {
 func (m *sim) handle(req fake.Msg) fake.Msg {
 	r := m.s.DefaultHandle(req)
 	key := fmt.Sprint(req["Destination"], "/", req["Command"])
+	if r["ErrorCode"] != 0 {
+		return r // refused by what any Origin refuses (fake.DefaultHandle)
+	}
+	if startsTask(key) && m.busy() {
+		r["ErrorCode"], r["ErrorMessage"] = -18, "A task is already running." // TASK_ALREADY_RUNNING
+
+		return r
+	}
 	if m.mosaicMsg(key, req, r) {
 		return r
 	}
 	switch key {
+	case "Mount/TrackMovingTarget":
+		m.trackMovingTarget(req, r)
+	case "Camera/SetCooling":
+		m.setCooling(req)
+	case "TaskController/CalibrateFocuser":
+		m.progressTask("CALIBRATING_FOCUSER", "FocuserCalibrationInfo", "PercentComplete", 4*m.step, nil)
 	case "ImageServer/GetThumbnail":
 		go m.thumbnail(fmt.Sprint(req["ImageUuid"]))
 	case "System/Update":
 		go m.update()
 	case "TaskController/RunInitialize":
 		m.mount.site(req["Latitude"], req["Longitude"])
+		if tz, ok := req["TimeZone"].(string); ok {
+			m.s.SetStatus("Mount", fake.Msg{"TimeZone": tz})
+		}
 		m.s.SetStatus("TaskController", fake.Msg{
 			"InitializationInfo": fake.Msg{"PercentageComplete": 50, "CurrentStep": "ALIGNING"}, "Stage": "IN_PROGRESS",
+			"AlignmentInfo": fake.Msg{"NumPoints": 2},
 		})
 		m.state("INITIALIZING", "")
 		go func() {
@@ -221,13 +256,16 @@ func (m *sim) handle(req fake.Msg) fake.Msg {
 	case "TaskController/PolarAlign":
 		m.task("POLAR_ALIGNING", fake.Msg{"PolarAlignInfo": fake.Msg{"AzimuthError": 0.02, "AltitudeError": -0.01}}, 0)
 	case "TaskController/RunGenerateNewDarks":
-		m.task("GENERATING_DARKS", fake.Msg{"DarkGenerationInfo": fake.Msg{"PercentageComplete": 0}}, 4*m.step)
+		m.progressTask("GENERATING_DARKS", "DarkGenerationInfo", "PercentageComplete", 4*m.step, nil)
 	case "TaskController/RunGenerateNewFlat":
-		m.task("GENERATING_FLATS", nil, 4*m.step)
+		// Reported in the TaskController status, spelled PercentageCompleted.
+		m.progressTask("GENERATING_FLATS", "FlatGenerationInfo", "PercentageCompleted", 4*m.step, nil)
 	case "System/SetAutomaticUpdates":
 		m.setInfo("System/GetAutomaticUpdates", req, "Enabled")
 	case "System/SetUpdateChannel":
 		m.setInfo("System/GetUpdateChannel", req, "Value")
+	case "ImageServer/SetFsmFormat":
+		m.setInfo("ImageServer/GetFsmFormat", req, "Format")
 	case "Mount/GotoRaDec":
 		ra, _ := req["Ra"].(float64)
 		dec, _ := req["Dec"].(float64)
@@ -235,9 +273,7 @@ func (m *sim) handle(req fake.Msg) fake.Msg {
 	case "Mount/Slew":
 		alt, _ := req["AltRate"].(float64)
 		azm, _ := req["AzmRate"].(float64)
-		m.mount.slew(int(alt), int(azm), false)
-	case "Mount/AbortAxisMovement":
-		m.mount.slew(0, 0, true)
+		m.mount.slew(int(alt), int(azm))
 	case "Mount/EnableTracking":
 		on, _ := req["Value"].(bool)
 		m.mount.setTracking(on)
@@ -250,7 +286,7 @@ func (m *sim) handle(req fake.Msg) fake.Msg {
 	case "System/PowerDownOrigin":
 		go m.powerCycle(false)
 	case "ElPanel/TurnOnLight", "ElPanel/TurnOffLight", "ElPanel/SetLightLevel":
-		m.elPanel(key, req, r)
+		m.elPanel(key, req)
 	case "Environment/RecalibrateEnvironmentSensor":
 		m.s.SetStatus("Environment", fake.Msg{"Recalibrating": true})
 		m.s.NotifyStatus("Environment")
@@ -268,6 +304,16 @@ func (m *sim) handle(req fake.Msg) fake.Msg {
 	case "Focuser/MoveTo":
 		if v, ok := req["Value"].(float64); ok {
 			go m.moveFocuser(m.startFocuser(context.Background()), v)
+		}
+	case "Focuser/Move":
+		// Runs until Move 0 (or a limit). Which way "in" goes is the fake's
+		// choice (towards 0): the hardware's is unconfirmed.
+		ctx := m.startFocuser(context.Background())
+		switch v, _ := req["Value"].(float64); {
+		case v > 0:
+			go m.moveFocuser(ctx, origin.FocuserMin)
+		case v < 0:
+			go m.moveFocuser(ctx, origin.FocuserMax)
 		}
 	case "TaskController/RunInfinityAutoFocus":
 		start, _ := req["StartingPosition"].(float64)
@@ -291,6 +337,7 @@ func (m *sim) handle(req fake.Msg) fake.Msg {
 			}
 		}
 	case "TaskController/HaltTasks":
+		halted := m.busy()
 		m.stopImaging(true)
 		m.mu.Lock()
 		if m.halt != nil { // a polar alignment or calibration task
@@ -298,6 +345,11 @@ func (m *sim) handle(req fake.Msg) fake.Msg {
 			m.halt = nil
 		}
 		m.mu.Unlock()
+		if halted {
+			// The halted task is reported in the status, until the next task.
+			m.s.SetStatus("TaskController", fake.Msg{"ErrorCode": -7, "ErrorMessage": "Task interrupted."}) // INTERRUPTED
+			m.s.NotifyStatus("TaskController")
+		}
 		m.mu.Lock()
 		if m.copying != nil {
 			m.copying()
@@ -363,6 +415,15 @@ func (m *sim) handle(req fake.Msg) fake.Msg {
 			m.s.SetFile("logs/origin-logs.tar.gz", []byte("origin-fake log bundle\n"))
 			m.s.Notify("System", "LogsReady", fake.Msg{"DownloadLink": "logs/origin-logs.tar.gz"})
 		}()
+	case "TaskController/ZipDirectory":
+		// The Origin zips the folder (ZIPPING_DIRECTORY, progress as ZipInfo),
+		// then names the ZIP below Images/.
+		name, _ := req["DirectoryName"].(string)
+		m.progressTask("ZIPPING_DIRECTORY", "ZipInfo", "PercentageComplete", 2*m.step, func() {
+			link := "Images/Astrophotography/" + name + ".zip"
+			m.s.SetFile(link, []byte("PK\x05\x06"+strings.Repeat("\x00", 18))) // an empty ZIP
+			m.s.Notify("ImageServer", "ZipReady", fake.Msg{"DownloadLink": link})
+		})
 	case "TaskController/CopyDirectoryToFlashDrive", "TaskController/CopyAllDirectoriesToFlashDrive":
 		m.copyToUSB()
 	case "ImageServer/SetStretch":
@@ -547,8 +608,102 @@ func pick(req fake.Msg, fields []string) fake.Msg {
 }
 
 func (m *sim) state(s, uuid string) {
-	m.s.SetStatus("TaskController", fake.Msg{"State": s, "ImagingInfo": fake.Msg{"ImageUuid": uuid}})
+	st := fake.Msg{"State": s, "ImagingInfo": fake.Msg{"ImageUuid": uuid}}
+	if s != "IDLE" { // a new task: the last one's failure is no longer reported
+		st["ErrorCode"], st["ErrorMessage"] = 0, ""
+	}
+	m.s.SetStatus("TaskController", st)
 	m.s.NotifyStatus("TaskController")
+}
+
+// busy reports whether a task runs (the State is not IDLE).
+func (m *sim) busy() bool {
+	st, _ := m.s.Status("TaskController")["State"].(string)
+
+	return st != "" && st != "IDLE"
+}
+
+// startsTask reports whether key starts a TaskController task, which an
+// Origin refuses while another runs (TASK_ALREADY_RUNNING). PolarAlign is
+// left out: the app sends it while initialization finishes (README item 21,
+// unconfirmed).
+func startsTask(key string) bool {
+	dest, cmd, _ := strings.Cut(key, "/")
+
+	return dest == "TaskController" && cmd != "PolarAlign" &&
+		(strings.HasPrefix(cmd, "Run") || cmd == "CalibrateFocuser" || cmd == "ZipDirectory" ||
+			strings.HasPrefix(cmd, "Copy") || strings.HasPrefix(cmd, "Recapture") || cmd == "ResumeImagingList")
+}
+
+// progressTask runs state reporting info.pct from 0 to 100 % over d (in
+// TaskController status, as firmware 1.5.6286), then runs done (if set) and
+// returns to IDLE; HaltTasks ends it early.
+func (m *sim) progressTask(state, info, pct string, d time.Duration, done func()) {
+	ctx, cancel := context.WithCancel(context.Background())
+	m.mu.Lock()
+	if m.halt != nil {
+		m.halt()
+	}
+	m.halt = cancel
+	m.mu.Unlock()
+	m.s.SetStatus("TaskController", fake.Msg{info: fake.Msg{pct: 0}})
+	m.state(state, "")
+	go func() {
+		defer func() {
+			m.s.SetStatus("TaskController", fake.Msg{info: nil})
+			m.state("IDLE", "")
+		}()
+		for p := 25; p <= 100; p += 25 {
+			select {
+			case <-ctx.Done():
+				return // halted: IDLE without done
+			case <-time.After(d / 4):
+			}
+			m.s.SetStatus("TaskController", fake.Msg{info: fake.Msg{pct: p}})
+			m.s.NotifyStatus("TaskController")
+		}
+		if done != nil {
+			done()
+		}
+	}()
+}
+
+// trackMovingTarget follows a Mount/TrackMovingTarget track: refused before
+// the mount is aligned, as firmware 1.5.6286 refuses it; else a go-to to its
+// first place, the mount tracking from there (the fake does not follow the
+// track's motion).
+func (m *sim) trackMovingTarget(req, r fake.Msg) {
+	if a, _ := m.s.Status("Mount")["IsAligned"].(bool); !a {
+		r["ErrorCode"], r["ErrorMessage"] = -5, "Origin can't track a moving target because it is not yet initialized. Try again after initializing." // ILLEGAL_STATE_OPERATION
+
+		return
+	}
+	track, _ := req["TargetTrack"].([]any)
+	if len(track) == 0 {
+		r["ErrorCode"], r["ErrorMessage"] = -4, "TargetTrack is missing" // MISSING_DATA
+
+		return
+	}
+	p, _ := track[0].(map[string]any)
+	ra, _ := p["Ra"].(float64)
+	dec, _ := p["Dec"].(float64)
+	m.mount.gotoRaDec(ra, dec)
+}
+
+// setCooling answers Camera/SetCooling for a cooled camera (-cooled): the
+// sensor is taken to its target at once, the cooler's power shown in the
+// Camera status as the real one reports it.
+func (m *sim) setCooling(req fake.Msg) {
+	on, _ := req["CoolingEnabled"].(bool)
+	info := fake.Msg{"CoolingEnabled": on}
+	st := fake.Msg{"Temperature": 24.3, "PowerLevel": 0.0}
+	if t, ok := req["TemperatureTarget"].(float64); ok && on {
+		info["TemperatureTarget"] = t
+		st["Temperature"], st["PowerLevel"] = t, min(1, max(0.05, (24.3-t)/40))
+	}
+	m.s.SetInfo("Camera/GetCooling", info)
+	m.s.SetStatus("Camera", st)
+	m.s.NotifyStatus("Camera")
 }
 
 func (m *sim) startImaging(uuid, name string) {
@@ -706,9 +861,11 @@ func (m *sim) powerCycle(reboot bool) {
 
 // elPanel drives a connected flat panel (the GIOTTO flat generator); one
 // not connected leaves its status as it is.
-func (m *sim) elPanel(key string, req, r fake.Msg) {
+func (m *sim) elPanel(key string, req fake.Msg) {
 	if c, _ := m.s.Status("ElPanel")["Connected"].(bool); !c {
-		r["ErrorCode"], r["ErrorMessage"] = -1, "no flat panel connected"
+		// As OriginCore: an Error notification, not a refused command
+		// (Celestron's web app, camera.js).
+		go m.s.Notify("Error", "Error", fake.Msg{"ErrorCode": -8, "ErrorMessage": "No flat panel is connected."}) // EL_PANEL_NOT_CONNECTED
 
 		return
 	}

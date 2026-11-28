@@ -4,9 +4,15 @@
 package control
 
 import (
+	"cmp"
 	"context"
 	"errors"
+	"fmt"
+	"os"
+	"path"
+	"path/filepath"
 	"slices"
+	"strings"
 
 	"github.com/dkorunic/nightglass/origin"
 )
@@ -68,6 +74,76 @@ func (a *App) DownloadDirectory(name string) error {
 
 		return nil
 	})
+}
+
+// DownloadFolderZip is Celestron's web app's folder download (not in the
+// app): the Origin zips the folder, raw frames included
+// (TaskController/ZipDirectory, its progress in the status as ZipInfo), and
+// zipMessage saves the ZIP into SaveDir.
+func (a *App) DownloadFolderZip(name string) error {
+	if name == "" || name == "." || name == ".." || strings.ContainsAny(name, `/\`) {
+		return fmt.Errorf("bad folder name %q", name)
+	}
+
+	return a.folderAction(func(c *origin.Client) error {
+		a.mu.Lock()
+		a.zipFolder = name // before asking: the answer may come at once
+		a.mu.Unlock()
+		if _, err := c.Send(context.Background(), "TaskController", "ZipDirectory", map[string]any{"DirectoryName": name}); err != nil {
+			a.mu.Lock()
+			a.zipFolder = ""
+			a.mu.Unlock()
+
+			return err
+		}
+
+		return nil
+	})
+}
+
+// zipMessage follows a DownloadFolderZip: on ImageServer/ZipReady it
+// downloads the ZIP into SaveDir, then deletes it on the Origin (DeleteFile
+// takes its path below Images/), as the web app does. Another client's ZIP
+// is left alone.
+func (a *App) zipMessage(ctx context.Context, c *origin.Client, m origin.Message) {
+	if m.Command != "ZipReady" || m.Module() != "ImageServer" {
+		return
+	}
+	a.mu.Lock()
+	name := a.zipFolder
+	a.zipFolder = ""
+	a.mu.Unlock()
+	if name == "" {
+		return
+	}
+	if m.ErrorCode != 0 {
+		if !origin.Localized(m.ErrorCode) { // a known code the relay shows itself
+			a.emit("alert", Alert{problemDownload, cmp.Or(m.ErrorMessage, "Could not create the ZIP file.")})
+		}
+
+		return
+	}
+	var zr struct{ DownloadLink string }
+	if m.Decode(&zr) != nil || zr.DownloadLink == "" {
+		return
+	}
+	a.emit("toast", Toast{toastInfo, "Downloading " + name + "…"})
+	go func() {
+		dir := a.Settings().SaveDir
+		// The link comes from the telescope: only a plain file name is kept.
+		p := filepath.Join(dir, safeName(path.Base("/"+zr.DownloadLink), safeName(name, "origin")+".zip"))
+		err := os.MkdirAll(dir, 0o755)
+		if err == nil {
+			err = origin.FetchToFile(ctx, a.httpc, c.Host(), zr.DownloadLink, p)
+		}
+		_ = c.Post(ctx, "ImageServer", "DeleteFile", map[string]any{"FilePath": strings.TrimPrefix(zr.DownloadLink, "Images/")})
+		if err != nil {
+			a.emit("alert", Alert{problemDownload, "Unable to download " + name + ". Please try again."})
+
+			return
+		}
+		a.emit("toast", Toast{toastInfo, "Saved " + p})
+	}()
 }
 
 // DeleteDirectory deletes one folder ("Delete Image Directory").

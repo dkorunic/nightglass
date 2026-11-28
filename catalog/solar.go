@@ -190,9 +190,14 @@ func JulianDate(t time.Time) float64 { return daysJ2000(t) + 2451545.0 }
 // Track is the app's TargetTrack for imaging a Moon or planet from lat, lon:
 // 16 places one second apart, starting 30 s after now.
 func Track(name string, now time.Time, lat, lon float64) []origin.TrackPoint {
-	out := make([]origin.TrackPoint, 16)
+	return TrackSpan(name, now, lat, lon, 16, time.Second)
+}
+
+// TrackSpan is a TargetTrack of n places step apart, starting 30 s after now.
+func TrackSpan(name string, now time.Time, lat, lon float64, n int, step time.Duration) []origin.TrackPoint {
+	out := make([]origin.TrackPoint, n)
 	for i := range out {
-		t := now.Add(30*time.Second + time.Duration(i)*time.Second)
+		t := now.Add(30*time.Second + time.Duration(i)*step)
 		ra, dec, _, _ := Body(name, t, lat, lon)
 		out[i] = origin.TrackPoint{RADeg: ra, DecDeg: dec, JD: JulianDate(t)}
 	}

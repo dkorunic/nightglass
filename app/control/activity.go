@@ -471,8 +471,12 @@ func statusText(in statusIn) string {
 		return s + "…"
 	case "GENERATING_FLATS":
 		s := "Generating Flats"
-		if in.FlatsPercent != nil {
-			s += fmt.Sprintf(" %d%%", int(*in.FlatsPercent))
+		pct := in.FlatsPercent
+		if pct == nil && ts.FlatGenerationInfo != nil { // as firmware 1.5.6286 reports it
+			pct = ts.FlatGenerationInfo.PercentageCompleted
+		}
+		if pct != nil {
+			s += fmt.Sprintf(" %d%%", int(*pct))
 		}
 
 		return s + "…"
@@ -486,23 +490,45 @@ func statusText(in statusIn) string {
 		return "Composing Mosaic…"
 	}
 	if s, ok := stateTexts[ts.State]; ok {
+		if p := statePercent(ts); p != nil {
+			return fmt.Sprintf("%s %d%%…", s, int(*p))
+		}
+
 		return s + "…"
 	}
 
 	return ""
 }
 
+// statePercent is the progress the Origin reports for a state the app shows
+// without one (not app parity; Celestron's web app shows it).
+func statePercent(ts *origin.TaskStatus) *float64 {
+	switch {
+	case ts.State == "FOCUSING" && ts.FocusInfo != nil:
+		return ts.FocusInfo.PercentageComplete
+	case ts.State == "CALIBRATING_FOCUSER" && ts.FocuserCalibrationInfo != nil:
+		return ts.FocuserCalibrationInfo.PercentComplete
+	case ts.State == "ZIPPING_DIRECTORY" && ts.ZipInfo != nil:
+		return ts.ZipInfo.PercentageComplete
+	}
+
+	return nil
+}
+
 const rad2deg = 180 / math.Pi
 
 // stateTexts are the states the app describes with a fixed text.
 var stateTexts = map[string]string{
-	"CALIBRATING_FOCUSER":                 "Calibrating Focuser",
-	"RECAPTURE_OBJECT":                    "Recapturing Scheduled Object",
-	"SAMPLE_CAPTURE":                      "Capturing Snapshot",
-	"VIDEO_CAPTURE":                       "Recording Video",
-	"FOCUSING":                            "Focusing",
-	"RESTORE_DARKS_TO_FACTORY":            "Restoring Dark Frames",
-	"RESTORING_FLATS_TO_FACTORY":          "Restoring Flat Frames",
+	"CALIBRATING_FOCUSER":        "Calibrating Focuser",
+	"RECAPTURE_OBJECT":           "Recapturing Scheduled Object",
+	"SAMPLE_CAPTURE":             "Capturing Snapshot",
+	"VIDEO_CAPTURE":              "Recording Video",
+	"FOCUSING":                   "Focusing",
+	"RESTORE_DARKS_TO_FACTORY":   "Restoring Dark Frames",
+	"RESTORING_FLATS_TO_FACTORY": "Restoring Flat Frames",
+	// Firmware 1.5.6286 states the app's enum lacks (it shows nothing then).
+	"RESUMING_IMAGING_LIST":               "Resuming Imaging Schedule",
+	"RESTACKING_IMAGE":                    "Restacking Image",
 	"MEASURING_DARK_CURRENT":              factoryCalibration,
 	"FACTORY_DARK_FLAT_GENERATION":        factoryCalibration,
 	"FACTORY_HOT_SPOT_CENTERING":          factoryCalibration,

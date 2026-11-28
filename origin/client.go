@@ -24,6 +24,9 @@ var (
 	ErrClosed = errors.New("origin: connection closed by the telescope")
 	// ErrGaveUp ends Run when an established connection drops, with GiveUp set.
 	ErrGaveUp = errors.New("origin: telescope not reachable")
+	// ErrSilent drops a connection that carried nothing for five poll
+	// intervals: a link gone without a TCP close.
+	ErrSilent = errors.New("origin: telescope stopped answering")
 )
 
 // CommandError is a Response with a non-zero ErrorCode.
@@ -84,6 +87,9 @@ var StatusQueries = [][2]string{
 	{"Environment", "GetSensors"},
 	{"LedRing", "GetBrightnessLevel"},
 	{"Focuser", "GetFocuserAdvancedSettings"},
+	// Not asked by the app; Celestron's web app asks it on connect for
+	// MirrorFlip, which RunCenterTarget's offsets depend on.
+	{"Optics", "GetConfiguration"},
 }
 
 // polled are re-asked when no update arrived for two poll intervals, in case
@@ -103,6 +109,7 @@ type Client struct {
 	pending map[int]chan Message
 	last    map[string]Message
 	lastAt  map[string]time.Time
+	heard   time.Time // the newest frame on the connection
 
 	// MapError, if set, replaces the error Send returns for an error-coded
 	// response (the GUI turns one it has already shown into a silent one).
@@ -206,15 +213,18 @@ func (c *Client) session(ctx context.Context) (bool, error) {
 	}
 	conn.SetReadLimit(8 << 20)
 	c.mu.Lock()
-	c.conn = conn
+	c.conn, c.heard = conn, time.Now()
 	c.mu.Unlock()
 	if c.OnState != nil {
 		c.OnState(true, nil)
 	}
-	sctx, stop := context.WithCancel(ctx)
-	go c.query(sctx)
+	sctx, stop := context.WithCancelCause(ctx)
+	go c.query(sctx, stop)
 	err = c.read(sctx, conn)
-	stop()
+	if cause := context.Cause(sctx); errors.Is(cause, ErrSilent) {
+		err = cause
+	}
+	stop(nil)
 	c.mu.Lock()
 	c.conn = nil
 	for seq, ch := range c.pending {
@@ -250,6 +260,7 @@ func (c *Client) read(ctx context.Context, conn *websocket.Conn) error {
 func (c *Client) dispatch(m Message) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	c.heard = time.Now()
 	if m.Type == TypeResponse {
 		if ch, ok := c.pending[m.SequenceID]; ok {
 			delete(c.pending, m.SequenceID)
@@ -257,13 +268,26 @@ func (c *Client) dispatch(m Message) {
 			ch <- m
 		}
 	}
-	if m.ErrorCode == 0 {
+	if m.ErrorCode == 0 || failedTask(m) {
 		c.last[m.Key()] = m
 		c.lastAt[m.Key()] = time.Now()
 	}
 	for _, s := range c.subs {
 		offer(s, m)
 	}
+}
+
+// failedTask reports whether m is a TaskController status that carries a
+// State beside its ErrorCode: a task that ended early is reported that way,
+// in every push until the next task (Celestron's web app, firmware 1.5.6286),
+// and its State is still the Origin's.
+func failedTask(m Message) bool {
+	if m.ErrorCode == 0 || m.Key() != "TaskController/GetStatus" {
+		return false
+	}
+	var ts struct{ State string }
+
+	return m.Decode(&ts) == nil && ts.State != ""
 }
 
 // offer sends m, dropping the oldest queued message when ch is full, so a
@@ -391,8 +415,12 @@ func (c *Client) forget(seq int) {
 	c.mu.Unlock()
 }
 
-// query asks for every status once, then re-asks the polled ones when stale.
-func (c *Client) query(ctx context.Context) {
+// query asks for every status once, then re-asks the polled ones when stale,
+// and drops the connection (ErrSilent) when nothing at all arrived for five
+// intervals: an Origin pushes TaskController status every few seconds and
+// answers the re-asks, so only a dead link is that quiet (not app parity: the
+// app has no such check; Celestron's own web app gives up after 4 s).
+func (c *Client) query(ctx context.Context, drop context.CancelCauseFunc) {
 	for _, q := range StatusQueries {
 		go func() { _ = c.Post(ctx, q[0], q[1], nil) }()
 	}
@@ -407,6 +435,14 @@ func (c *Client) query(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-t.C:
+			c.mu.Lock()
+			silent := time.Since(c.heard) > 5*iv
+			c.mu.Unlock()
+			if silent {
+				drop(ErrSilent)
+
+				return
+			}
 			for _, q := range polled {
 				c.mu.Lock()
 				stale := time.Since(c.lastAt[q[0]+"/"+q[1]]) > 2*iv
