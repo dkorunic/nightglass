@@ -30,10 +30,10 @@ const (
 type MosaicPlan struct {
 	ExposureChoices           []float64 // manual sub-exposures
 	ISOChoices                []int
-	WidthArcmin, HeightArcmin float64 // area, as the app's sliders start
-	RotationDeg               float64 // the camera's position angle
-	DurationSec               float64 // per tile (getDefaultImagingDurationForSkyObject)
-	ExposureSec               float64 // per sub-exposure when automatic
+	WidthArcmin, HeightArcmin float64 // area
+	RotationDeg               float64 // the mosaic's orientation
+	DurationSec               float64 // per tile
+	ExposureSec               float64 // per sub-exposure
 	ISO                       int
 	MaxTiles                  int // Mosaic/GetMaximumTiles, 20 when unknown
 }
@@ -60,56 +60,38 @@ func (a *App) MosaicStartTimes(raDeg, decDeg float64) StartTimes {
 	return st
 }
 
-// mosaicDuration is the app's default per-tile duration for an object type
-// (native table): stars 60 s, open clusters 300 s, globular clusters and
-// planetary nebulae 600 s, nebulae and galaxies 1200 s, the Moon and
-// planets 30 s.
-func mosaicDuration(typ string) float64 {
-	t := strings.ToLower(typ)
-	switch {
-	case t == "moon" || t == "planet":
-		return 30
-	case strings.Contains(t, "open cluster"):
-		return 300
-	case strings.Contains(t, "globular"), strings.Contains(t, "planetary"):
-		return 600
-	case strings.Contains(t, "galax"), strings.Contains(t, "nebula"), strings.Contains(t, "hii"),
-		strings.Contains(t, "supernova"), strings.Contains(t, "cloud"):
-		return 1200
-	}
+// webISOs are the ISO choices of Celestron's web client, offered within the
+// camera's reported range.
+var webISOs = []int{100, 200, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000}
 
-	return 60
-}
-
-// fov is the camera's field (radians) and orientation from the newest
-// frame, else the connected camera's sensor field, else the app's defaults.
-// ok is whether a frame reported it (only a frame knows the orientation).
-func (a *App) fov() (x, y, orientation float64, ok bool) {
-	if x, y, o, ok := a.frameFov(); ok {
-		return x, y, o, true
+// fov is the camera's field (radians) from the newest frame, else the
+// connected camera's sensor field, else the app's defaults.
+func (a *App) fov() (x, y float64) {
+	if x, y, ok := a.frameFov(); ok {
+		return x, y
 	}
 	if c, err := a.cl(); err == nil {
 		if ci, have := c.CameraInfo(); have {
 			if x, y, ok := sensorField(ci); ok {
-				return x, y, 0, false
+				return x, y
 			}
 		}
 	}
 
-	return defaultFovX, defaultFovY, 0, false
+	return defaultFovX, defaultFovY
 }
 
-// frameFov is the field and orientation the newest frame reports.
-func (a *App) frameFov() (x, y, orientation float64, ok bool) {
+// frameFov is the field the newest frame reports.
+func (a *App) frameFov() (x, y float64, ok bool) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	for _, k := range []string{kindLive, kindStacked, kindFinal} {
 		if f, have := a.frames[k]; have && f.Info.FovX > 0 && f.Info.FovY > 0 {
-			return f.Info.FovX, f.Info.FovY, f.Info.Orientation, true
+			return f.Info.FovX, f.Info.FovY, true
 		}
 	}
 
-	return 0, 0, 0, false
+	return 0, 0, false
 }
 
 // originFocalMM is the Origin's focal length: the app's default field
@@ -130,28 +112,12 @@ func sensorField(ci origin.CameraInfo) (x, y float64, ok bool) {
 	return ci.MaxImageWidth * rad, ci.MaxImageHeight * rad, true
 }
 
-// MosaicPlanFor returns the defaults for a mosaic of target (a catalog row's
-// Catalog and Name; empty for typed coordinates).
-func (a *App) MosaicPlanFor(r ImageRequest) MosaicPlan {
-	p := MosaicPlan{WidthArcmin: 60, HeightArcmin: 60, DurationSec: 60, ExposureSec: 10, ISO: 200, ISOChoices: []int{100, 200, 2000}, MaxTiles: 20}
-	var t catalog.Target
-	if r.Name != "" {
-		for _, x := range a.targets(r.Catalog, a.now()) {
-			if x.Name == r.Name {
-				t = x
-
-				break
-			}
-		}
-	}
-	p.DurationSec = mosaicDuration(t.Type)
-	// The object's size × 2 × kMosaicSizeScale (0.6), as the app's default.
-	if size := max(t.Size, t.Minor); size > 0 && t.Type != "Moon" && t.Type != "Planet" {
-		p.WidthArcmin, p.HeightArcmin = 1.2*size, 1.2*size
-	}
-	if _, _, o, ok := a.fov(); ok {
-		p.RotationDeg = math.Mod(o+math.Pi, 2*math.Pi) * 180 / math.Pi
-	}
+// MosaicPlanFor returns a new mosaic's defaults (for a catalog row's
+// Catalog and Name, or typed coordinates): those of Celestron's web client,
+// whatever the target: 3° × 3° at orientation 0°, 60 sub-exposures of 10 s
+// per tile (600 s) at ISO 1000, its ISO choices within the camera's range.
+func (a *App) MosaicPlanFor(_ ImageRequest) MosaicPlan {
+	p := MosaicPlan{WidthArcmin: 180, HeightArcmin: 180, DurationSec: 60 * 10, ExposureSec: 10, ISO: 1000, ISOChoices: webISOs, MaxTiles: 20}
 	p.ExposureChoices = []float64{1, 5, 10, 15, 30}
 	c, err := a.cl()
 	if err != nil {
@@ -160,11 +126,9 @@ func (a *App) MosaicPlanFor(r ImageRequest) MosaicPlan {
 	if mc, _ := c.MountConfig(); mc.OnWedge {
 		p.ExposureChoices = append(p.ExposureChoices, 45, 60)
 	}
-	if f, ok := c.Last("Camera/GetFilter"); ok && f.Fields()["Filter"] == "Nebula" {
-		p.ExposureSec = 15
-	}
-	if ci, _ := c.CameraInfo(); ci.DefaultIso > 0 {
-		p.ISO = ci.DefaultIso
+	if ci, _ := c.CameraInfo(); ci.MaxIso > 0 {
+		p.ISOChoices = slices.DeleteFunc(slices.Clone(webISOs), func(v int) bool { return v < ci.MinIso || v > ci.MaxIso })
+		p.ISO = min(max(p.ISO, ci.MinIso), ci.MaxIso)
 	}
 	if m, err := c.Send(context.Background(), "Mosaic", "GetMaximumTiles", map[string]any{"Scale": 0.5}); err == nil {
 		var v struct{ MaximumTiles int }
@@ -182,7 +146,7 @@ type MosaicGrid struct{ Cols, Rows, Tiles int }
 
 // GridFor returns the tiles a width × height (arc minutes) mosaic takes.
 func (a *App) GridFor(widthArcmin, heightArcmin float64) MosaicGrid {
-	x, y, _, _ := a.fov()
+	x, y := a.fov()
 	stride := 0.8 * min(x, y)
 	cols := int(math.Ceil(widthArcmin / 60 * math.Pi / 180 / stride))
 	rows := int(math.Ceil(heightArcmin / 60 * math.Pi / 180 / stride))

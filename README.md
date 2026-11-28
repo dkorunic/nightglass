@@ -269,6 +269,11 @@ Run against a real Origin, from the GUI and once with `originctl`. Items marked
     which shows an alert on each connect), and the status push rates
     (`origin-fake` pushes Mount, Camera, TaskController, Environment and
     DewHeater about once a second, as Celestron's web app describes).
+43. Defaults are Celestron's web client's: a new run keeps raw images on the
+    Origin (check the run's folder for `Light*.fits`), manual imaging uses
+    10 s at ISO 1000, a new mosaic is 3° × 3° with 600 s tiles. **Verify**
+    autofocus with `UseFineFocus` (sent as the web client does) still
+    converges as the app's did.
 
 ## License
 

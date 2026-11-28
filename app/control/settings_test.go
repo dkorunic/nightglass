@@ -12,12 +12,12 @@ import (
 
 func TestSettingsMissingCorruptAndInvalid(t *testing.T) {
 	dir := t.TempDir()
-	if s, err := LoadSettings(filepath.Join(dir, "none.json")); err != nil || s.ExposureSec != 10 || s.ISO != 0 || s.HasLocation() {
+	if s, err := LoadSettings(filepath.Join(dir, "none.json")); err != nil || s.ExposureSec != 10 || s.ISO != 1000 || s.HasLocation() {
 		t.Errorf("missing file: %+v %v", s, err)
 	}
 	bad := filepath.Join(dir, "bad.json")
 	_ = os.WriteFile(bad, []byte("{not json"), 0o644)
-	if s, err := LoadSettings(bad); err == nil || s.ISO != 0 {
+	if s, err := LoadSettings(bad); err == nil || s.ISO != 1000 {
 		t.Errorf("corrupt file: %+v %v, want defaults and an error", s, err)
 	}
 	invalid := filepath.Join(dir, "invalid.json")
@@ -30,13 +30,13 @@ func TestSettingsMissingCorruptAndInvalid(t *testing.T) {
 	orig := []byte(`{"LatDeg": 45.8, "LonDeg": 16, "SlewRate": 9, "ISO": "loud", "PendingImages": ["run"], "LaunchCount": 7, "EverConnected": true}`)
 	_ = os.WriteFile(mixed, orig, 0o644)
 	s, err := LoadSettings(mixed)
-	if err == nil || s.LatDeg != 45.8 || s.SlewRate != 4 || s.ISO != 0 || len(s.PendingImages) != 1 || s.LaunchCount != 7 || !s.EverConnected {
+	if err == nil || s.LatDeg != 45.8 || s.SlewRate != 4 || s.ISO != 1000 || len(s.PendingImages) != 1 || s.LaunchCount != 7 || !s.EverConnected {
 		t.Errorf("one bad value: %+v %v, want only it reset", s, err)
 	}
 	if b, _ := os.ReadFile(mixed + ".bak"); string(b) != string(orig) {
 		t.Errorf("backup %q", b)
 	}
-	if s := DefaultSettings(); s.SlewRate != 4 { // TEL_SLEW_RATE, as EquipmentSettings.initialize
+	if s := DefaultSettings(); s.SlewRate != 4 { // speed 9, the web client's rate and the app's TEL_SLEW_RATE
 		t.Errorf("default slew rate %d, want 4", s.SlewRate)
 	}
 	for _, s := range []Settings{{LatDeg: 91}, {LonDeg: -181}, {TimeZone: "Not/AZone"}, {ISO: -1}, {SlewRate: 5}, {SlewRate: -1}} {

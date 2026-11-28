@@ -24,10 +24,10 @@ import (
 
 func autoStretchRef(img image.Image, strength, background float64) *image.NRGBA {
 	if strength < 0 {
-		strength = 0.8
+		strength = 0.90
 	}
 	if background < 0 {
-		background = 0.045
+		background = 0.035
 	}
 	b := img.Bounds()
 	n := b.Dx() * b.Dy()

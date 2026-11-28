@@ -90,7 +90,7 @@ expect "typed address checked" "$(call CheckHost '"127.0.0.1:1"')" 'Manual IP Ad
 expect "second image" "$(call Image '{}')" '^\{\}$|^null$'
 sleep 0.5
 expect "cancel discards" "$(call CancelImaging)" '^\{\}$|^null$'
-expect "mosaic plan" "$(call MosaicPlanFor '{"Catalog":"Messier","Name":"M 31"}')" '"DurationSec":1200'
+expect "mosaic plan" "$(call MosaicPlanFor '{"Catalog":"Messier","Name":"M 31"}')" '"DurationSec":600'
 expect "mosaic grid" "$(call GridFor 120 60)" '"Cols":3,"Rows":2,"Tiles":6'
 expect "mosaic start" "$(call StartMosaic '{"Catalog":"Messier","Name":"M 31","RA":10.68,"Dec":41.27,"WidthArcmin":60,"HeightArcmin":30,"RotationDeg":0,"DurationSec":60,"ExposureSec":10,"ISO":200,"StartAt":"0001-01-01T00:00:00Z"}')" '^\{\}$|^null$'
 expect "mosaics listed" "$(call Mosaics)" '"Title":"M 31 Mosaic"'

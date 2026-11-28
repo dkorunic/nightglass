@@ -364,7 +364,8 @@ func TestAutoFocusLikeApp(t *testing.T) {
 	if err := c.AutoFocus(context.Background(), false, 31234); err != nil {
 		t.Fatal(err)
 	}
-	if m := last(t, s, "TaskController", "RunInfinityAutoFocus"); m["StartingPosition"] != 31234.0 {
+	// Fine focus, as Celestron's web client always asks for it.
+	if m := last(t, s, "TaskController", "RunInfinityAutoFocus"); m["StartingPosition"] != 31234.0 || m["UseFineFocus"] != true {
 		t.Errorf("payload %v", m)
 	}
 	if err := c.AutoFocus(context.Background(), true, 0); err != nil {

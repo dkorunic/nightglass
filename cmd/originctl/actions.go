@@ -438,7 +438,7 @@ func mosaic(ctx context.Context, c *origin.Client, pos []string, out io.Writer) 
 			"Uuid": uuid, "ObjectRa": vals[0] * r, "ObjectDec": vals[1] * r,
 			"MosaicWidth": vals[2] / 60 * r, "MosaicHeight": vals[3] / 60 * r, "MosaicOrientation": math.Mod(vals[4], 360) * r,
 			"TotalDuration": vals[5], "ExposureTime": vals[6], "ISO": int(vals[7]),
-			"SaveRawImage": false, "PowerDownOnCompletion": false, "AutoFocusAfterSlew": false,
+			"SaveRawImage": true, "PowerDownOnCompletion": false, "AutoFocusAfterSlew": false, // raw images kept, as the web client
 		}); err != nil {
 			return err
 		}

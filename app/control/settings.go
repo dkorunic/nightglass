@@ -55,12 +55,12 @@ type Settings struct {
 
 	LatDeg, LonDeg      float64 // observer, degrees, east positive
 	ExposureSec         float64 // Origin.java ORIGIN_DEFAULT_MANUAL_EXPOSURE_TIME
-	ISO                 int     // manual ISO; 0 is the camera's default (ISOSettings.defaultISO)
-	SnapshotExposureSec float64 // snapshot exposure, 0.1 s by default
+	ISO                 int     // manual ISO (1000 by default, as the web client); 0 is the camera's default
+	SnapshotExposureSec float64 // snapshot (manual live view) exposure, 10 s by default as the web client
 	SlewLimitMinDeg     float64 // scopeCESlewLimitMin: lowest go-to altitude
-	SlewRate            int     // the app's "Rate:" 1–4 (speeds 2, 4, 6, 9); 0 is the default
-	DitherDistance      int     // ORIGIN_DITHER_AMOUNT
-	DitherInterval      int     // ORIGIN_DITHER_FREQUENCY
+	SlewRate            int     // the app's "Rate:" 1–4 (speeds 2, 4, 6, 9); 4 (speed 9) by default, as the web client
+	DitherDistance      int     // pixels, 10 by default as the web client
+	DitherInterval      int     // frames, 5 by default as the web client
 
 	LaunchCount int // the app's currentLaunchCount, for the Quick Start
 	// NightBrightness dims the window in night mode, percent
@@ -86,10 +86,12 @@ type Settings struct {
 	// chosen. LastAnnouncement is the last one shown (kept by Go).
 	Announcements bool
 
-	// The app's camera and imaging preferences, with its defaults.
+	// The camera and imaging preferences, with the defaults of Celestron's
+	// web client (firmware 1.5.6286): automatic exposure, raw images kept on
+	// the Origin, stopping when stacking fails, no dithering.
 	ManualImaging        bool // Origin.UseManualImaging: else the telescope picks exposure and ISO
 	Snapshot             bool // Origin snapshot mode: manual live view
-	SaveRaw              bool // save raw images on the Origin
+	SaveRaw              bool // keep raw images on the Origin (on by default)
 	StopOnPlateSolveFail bool // stop imaging when plate solving fails
 	Dither               bool
 
@@ -103,7 +105,7 @@ type Settings struct {
 	// on by default.
 	AutoCrop bool
 	// Cooling and CoolingTargetC are a cooled camera's cooler (HasCooling),
-	// sent on each connect: preferences, as in Celestron's web app (off,
+	// sent on each connect: preferences, as in Celestron's web client (on,
 	// +10 °C by default); not in the app, whose cameras have none.
 	Cooling        bool
 	CoolingTargetC float64
@@ -115,11 +117,11 @@ func DefaultSettings() Settings {
 
 	return Settings{
 		TimeZone: DefaultTimeZone(), Catalog: "Messier", ExposureSec: 10,
-		SaveDir:             filepath.Join(home, "Pictures", "Origin"),
-		SnapshotExposureSec: 0.1, StopOnPlateSolveFail: true, DitherDistance: 15, DitherInterval: 3,
+		SaveDir: filepath.Join(home, "Pictures", "Origin"),
+		ISO:     1000, SnapshotExposureSec: 10, SaveRaw: true, StopOnPlateSolveFail: true, DitherDistance: 10, DitherInterval: 5,
 		NightBrightness: 65, TimeFormat: "24hs", DateOrder: "YMD", CoordFormat: "dms",
 		SlewRate: 4, MosaicFlatten: true, MosaicNormalize: true, MosaicEqualize: true, AutoCrop: true, PostProcess: true, MaxExposureSec: 30,
-		CoolingTargetC: 10,
+		Cooling: true, CoolingTargetC: 10,
 	}
 }
 

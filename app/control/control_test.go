@@ -134,7 +134,7 @@ func TestNewWithCorruptSettings(t *testing.T) {
 	bad := filepath.Join(t.TempDir(), "bad.json")
 	_ = os.WriteFile(bad, []byte("{not json"), 0o644)
 	a, err := New(bad, func(string, any) {})
-	if err != nil || len(a.Warnings()) != 1 || a.Settings().ISO != 0 {
+	if err != nil || len(a.Warnings()) != 1 || a.Settings().ISO != 1000 {
 		t.Errorf("New with corrupt settings: %v %v", a.Warnings(), err)
 	}
 }

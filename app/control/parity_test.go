@@ -339,10 +339,15 @@ func TestCaptureAppliedOnConnect(t *testing.T) {
 }
 
 func TestNewSettingsDefaultsAndValidation(t *testing.T) {
+	// The defaults of Celestron's web client (firmware 1.5.6286): automatic
+	// exposure, 10 s and ISO 1000 when manual, raw images kept on the Origin,
+	// stop when stacking fails, no dithering (every 5 frames, 10 pixels when
+	// on), the fastest slew, a cooled camera's cooler on at +10 °C.
 	d := DefaultSettings()
-	if d.ManualImaging || d.Snapshot || d.SnapshotExposureSec != 0.1 || d.SlewLimitMinDeg != 0 || d.SaveRaw ||
-		!d.StopOnPlateSolveFail || d.Dither || d.DitherDistance != 15 || d.DitherInterval != 3 {
-		t.Errorf("defaults %+v differ from the app's", d)
+	if d.ManualImaging || d.Snapshot || d.ExposureSec != 10 || d.ISO != 1000 || d.SnapshotExposureSec != 10 ||
+		d.SlewLimitMinDeg != 0 || !d.SaveRaw || !d.StopOnPlateSolveFail || d.Dither || d.DitherDistance != 10 ||
+		d.DitherInterval != 5 || d.SlewRate != 4 || !d.Cooling || d.CoolingTargetC != 10 {
+		t.Errorf("defaults %+v differ from the web client's", d)
 	}
 	for _, s := range []Settings{{SlewLimitMinDeg: -1}, {SlewLimitMinDeg: 90}, {SnapshotExposureSec: -1}, {DitherDistance: -1}} {
 		if s.Validate() == nil {

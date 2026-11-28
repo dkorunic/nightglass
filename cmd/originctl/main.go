@@ -38,8 +38,8 @@ const usage = `usage: originctl [-host ip[:port]] [-timeout 10s] command [flags]
   goto  -target NAME | -ra D -dec D [-lat D -lon D]
                                     slew to a catalog target, the Moon or a planet
                                     (where it is now, from -lat/-lon), or J2000 degrees
-  image [-target NAME] [-name N] [-manual -exp S -iso N] [-raw] [-continue]
-        [-dither -dither-distance 15 -dither-interval 3] [-lat D -lon D]
+  image [-target NAME] [-name N] [-manual -exp S -iso N] [-raw=false] [-continue]
+        [-dither -dither-distance 10 -dither-interval 5] [-lat D -lon D]
         [-duration 30m]             (-duration: the Origin ends the run itself)
                                     image where the telescope points (goto first);
                                     -target only names it, with its size/magnitude,
@@ -223,11 +223,11 @@ func do(ctx context.Context, c *origin.Client, cmd string, args []string, out, e
 	outFile := fs.String("o", "", "output file")
 	manual := fs.Bool("manual", false, "manual exposure and ISO")
 	snapshot := fs.Bool("snapshot", false, "manual live view (with -manual)")
-	raw := fs.Bool("raw", false, "save raw images on the Origin")
+	raw := fs.Bool("raw", true, "keep raw images on the Origin (-raw=false: do not)")
 	cont := fs.Bool("continue", false, "continue imaging when plate solving fails")
 	dither := fs.Bool("dither", false, "dither between exposures")
-	ditherDist := fs.Int("dither-distance", 15, "dither distance")
-	ditherIv := fs.Int("dither-interval", 3, "dither every N exposures")
+	ditherDist := fs.Int("dither-distance", 10, "dither distance, pixels")
+	ditherIv := fs.Int("dither-interval", 5, "dither every N exposures")
 	duration := fs.Duration("duration", 0, "image: end the run after this long (TotalDuration)")
 	demo := fs.Bool("demo", false, "demo mode initialization (init)")
 	fromOrigin := fs.Bool("from-origin", false, "autofocus where the Origin chooses (with -auto)")

@@ -18,20 +18,30 @@ import (
 )
 
 func TestMosaicPlanAndGrid(t *testing.T) {
-	for typ, want := range map[string]float64{"Galaxy": 1200, "Open Cluster": 300, "Globular Cluster": 600, "Planetary Nebula": 600, "Planet": 30, "*": 60} {
-		if got := mosaicDuration(typ); got != want {
-			t.Errorf("%s: %v, want %v", typ, got, want)
-		}
-	}
 	a, _ := newApp(t)
 	// The default field: stride 0.8 × 0.01467 rad = 40.35′.
 	if g := a.GridFor(120, 40); g.Cols != 3 || g.Rows != 1 || g.Tiles != 3 {
 		t.Errorf("grid %+v", g)
 	}
+	// The web client's new mosaic, whatever the target: 3° × 3° at 0°, 60
+	// sub-exposures of 10 s per tile, ISO 1000.
 	p := a.MosaicPlanFor(ImageRequest{Catalog: "Messier", Name: "M 31"})
-	m31 := messier(t, a, "M 31")
-	if p.DurationSec != 1200 || math.Abs(p.WidthArcmin-1.2*max(m31.Size, m31.Minor)) > 1e-9 || p.MaxTiles != 20 || p.ISO != 200 {
+	if p.WidthArcmin != 180 || p.HeightArcmin != 180 || p.RotationDeg != 0 || p.DurationSec != 600 ||
+		p.ExposureSec != 10 || p.ISO != 1000 || p.MaxTiles != 20 || !slices.Contains(p.ISOChoices, 1000) {
 		t.Errorf("plan %+v", p)
+	}
+	// Connected, the ISO choices are the web client's within the camera's range.
+	b, _, _ := connectedTo(t, func(s *fake.Server) {
+		s.SetInfo("Camera/GetCameraInfo", fake.Msg{"MinIso": 100, "MaxIso": 5000})
+	})
+	cl, _ := b.cl()
+	for end := time.Now().Add(2 * time.Second); time.Now().Before(end); time.Sleep(5 * time.Millisecond) {
+		if ci, _ := cl.CameraInfo(); ci.MaxIso == 5000 {
+			break
+		}
+	}
+	if p := b.MosaicPlanFor(ImageRequest{}); !slices.Equal(p.ISOChoices, []int{100, 200, 500, 1000, 2000, 5000}) || p.ISO != 1000 {
+		t.Errorf("connected plan %+v", p)
 	}
 }
 
@@ -71,9 +81,6 @@ func TestMosaicGridFromSensor(t *testing.T) {
 	// Stride 0.8 × 0.012896 rad = 35.5′ (the default's 40.35′ gives 3 × 1).
 	if g := a.GridFor(120, 40); g.Cols != 4 || g.Rows != 2 {
 		t.Errorf("grid %+v", g)
-	}
-	if _, _, _, ok := a.fov(); ok {
-		t.Error("a sensor field has no orientation")
 	}
 }
 

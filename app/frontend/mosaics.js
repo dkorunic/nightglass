@@ -42,7 +42,7 @@ $("#mosaic").onclick = async () => {
   f.exp.replaceChildren(...mosaicPlan.ExposureChoices.map((v) => new Option(`${v}`, `${v}`)));
   f.exp.value = String(Math.min(30, mosaicPlan.ExposureSec));
   f.iso.replaceChildren(...mosaicPlan.ISOChoices.map((v) => new Option(`${v}`, `${v}`)));
-  f.iso.value = String(mosaicPlan.ISOChoices.includes(mosaicPlan.ISO) ? mosaicPlan.ISO : 200);
+  f.iso.value = String(mosaicPlan.ISOChoices.includes(mosaicPlan.ISO) ? mosaicPlan.ISO : mosaicPlan.ISOChoices[0]);
   f.width.value = mosaicPlan.WidthArcmin.toFixed(1);
   f.height.value = mosaicPlan.HeightArcmin.toFixed(1);
   f.rotation.value = Math.round(mosaicPlan.RotationDeg);

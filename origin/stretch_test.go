@@ -32,8 +32,8 @@ func TestAutoStretch(t *testing.T) {
 		}
 		return median(v)
 	}()
-	if math.Abs(med-0.045) > 0.02 {
-		t.Errorf("stretched median %.3f, want about the 0.045 background", med)
+	if math.Abs(med-0.035) > 0.02 {
+		t.Errorf("stretched median %.3f, want about the 0.035 background", med)
 	}
 	if out.NRGBAAt(100, 100).R != 255 || out.NRGBAAt(0, 0).R != 0 {
 		t.Errorf("star %v, dead pixel %v", out.NRGBAAt(100, 100), out.NRGBAAt(0, 0))

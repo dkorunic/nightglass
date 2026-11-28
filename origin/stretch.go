@@ -14,13 +14,14 @@ import (
 // the (normalised) median absolute deviation, and a midtones transfer
 // function puts the median at the background level. strength (0..1) sets
 // the clipping, background (0..1) the target level; negative means the
-// app's 0.8 and 0.045. Statistics come from about 1% of the pixels.
+// defaults of Celestron's web client, 0.90 and 0.035 (the Origin sends its
+// own with each master). Statistics come from about 1% of the pixels.
 func AutoStretch(img image.Image, strength, background float64) *image.NRGBA {
 	if strength < 0 {
-		strength = 0.8
+		strength = 0.90
 	}
 	if background < 0 {
-		background = 0.045
+		background = 0.035
 	}
 	b := img.Bounds()
 	n := b.Dx() * b.Dy()

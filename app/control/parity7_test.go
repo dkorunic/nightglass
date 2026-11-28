@@ -87,13 +87,13 @@ func TestCameraSettingsLockedWhileImaging(t *testing.T) {
 	a, _, s := connected(t)
 	setTask(t, a, s, fake.Msg{"State": "IMAGING_OBJECT"})
 	st := a.Settings()
-	st.ManualImaging, st.ExposureSec, st.ISO, st.Snapshot, st.Night = !st.ManualImaging, 20, 1000, !st.Snapshot, true
+	st.ManualImaging, st.ExposureSec, st.ISO, st.Snapshot, st.Night = !st.ManualImaging, 20, 2000, !st.Snapshot, true
 	st.DitherDistance, st.DitherInterval = 99, 99
 	if err := a.SaveSettings(st); err != nil {
 		t.Fatal(err)
 	}
 	got := a.Settings()
-	if got.ManualImaging == st.ManualImaging || got.ExposureSec == 20 || got.ISO == 1000 || got.Snapshot == st.Snapshot || !got.Night {
+	if got.ManualImaging == st.ManualImaging || got.ExposureSec == 20 || got.ISO == 2000 || got.Snapshot == st.Snapshot || !got.Night {
 		t.Errorf("camera settings changed mid-run: %+v", got)
 	}
 	if got.DitherDistance != 30 || got.DitherInterval != 10 {
@@ -119,11 +119,11 @@ func TestReconnectToRunAsksForImage(t *testing.T) {
 	}
 }
 
-// The ISO picker: the saved ISO, else the camera's default; disabled until
-// the camera reports its range.
+// The ISO picker: the saved ISO (1000 by default, as the web client), else
+// with 0 the camera's default; disabled until the camera reports its range.
 func TestISOChoices(t *testing.T) {
 	a, _ := newApp(t)
-	if c := a.ISOChoices(); c.Known || c.Value != 200 {
+	if c := a.ISOChoices(); c.Known || c.Value != 1000 {
 		t.Errorf("offline: %+v", c)
 	}
 	b, _, _ := connectedTo(t, func(s *fake.Server) {
@@ -135,8 +135,12 @@ func TestISOChoices(t *testing.T) {
 			break
 		}
 	}
-	if c := b.ISOChoices(); !c.Known || c.Value != 500 || c.Values[len(c.Values)-1] != 5000 {
+	if c := b.ISOChoices(); !c.Known || c.Value != 1000 || c.Values[len(c.Values)-1] != 5000 {
 		t.Errorf("connected: %+v", c)
+	}
+	setSettings(t, b, func(s *Settings) { s.ISO = 0 })
+	if c := b.ISOChoices(); c.Value != 500 {
+		t.Errorf("ISO 0: %+v, want the camera's default", c)
 	}
 }
 
@@ -161,8 +165,10 @@ func TestCameraCooling(t *testing.T) {
 			break
 		}
 	}
-	if len(received(s, "Camera", "SetCooling")) != 0 {
-		t.Error("cooling sent before it was chosen")
+	// The web client's default, on at +10 °C, is sent once the camera
+	// reports its cooler.
+	if m, ok := s.Wait(fake.Is("Camera", "SetCooling"), 2*time.Second); !ok || m["CoolingEnabled"] != true || m["TemperatureTarget"] != 10.0 {
+		t.Errorf("default cooling on connect: %v", m)
 	}
 	if err := a.SetCooling(true, -5); err != nil {
 		t.Fatal(err)

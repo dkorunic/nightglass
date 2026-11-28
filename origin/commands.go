@@ -179,9 +179,11 @@ func (c *Client) AutoFocus(ctx context.Context, terrestrial bool, start int) err
 	if terrestrial {
 		_, err = c.Send(ctx, "TaskController", "RunTerrestrialAutoFocus", nil)
 	} else {
-		var p map[string]any
+		// UseFineFocus as Celestron's web client always sends it (its
+		// default "fine" range); the app sends none.
+		p := map[string]any{"UseFineFocus": true}
 		if start > 0 { // 0: from where the Origin chooses (after a filter change)
-			p = map[string]any{"StartingPosition": start}
+			p["StartingPosition"] = start
 		}
 		_, err = c.Send(ctx, "TaskController", "RunInfinityAutoFocus", p)
 	}
