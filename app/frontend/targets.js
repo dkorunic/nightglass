@@ -143,9 +143,6 @@ export const canFinish = (state, hasStacked) => state === "IMAGING_OBJECT" && ha
 // canCancel is when the app offers Cancel: any run but a schedule's recapture.
 export const canCancel = (state) => isImagingState(state) && state !== "RECAPTURE_OBJECT";
 
-// rateSpeed is the slew speed for the app's "Rate:" 1–4 (TEL_GUIDE_RATE …
-// TEL_SLEW_RATE), from the native rate table; anything else is rate 3.
-export const rateSpeed = (rate) => [2, 4, 6, 9][rate - 1] ?? 6;
 
 // focusSteps are the fine and rough focus steps (FocusOptionsFragment).
 export const focusSteps = (snapshot) => (snapshot ? [100, 1000] : [10, 100]);
@@ -250,19 +247,8 @@ export function guiderText(f) {
   return parts.join(", ");
 }
 
-// cameraExtra is the camera's sensor temperature and a cooled camera's
-// cooler power (Camera/GetCaptureParameters), appended to its status row;
-// batteryTemp the mount's battery temperature, which the web app takes as no
-// reading from 100 °C (neither is in the app).
-export function cameraExtra(f) {
-  let s = "";
-  if (f.Temperature != null) s += `, ${f.Temperature.toFixed(1)} °C`;
-  if (f.PowerLevel != null) s += `, cooler ${Math.round(f.PowerLevel * 100)}%`;
-  return s;
-}
-export function batteryTemp(t) {
-  return t != null && t < 100 ? `, ${t.toFixed(1)} °C` : "";
-}
+// celsius is a temperature row of the control panes; "–" when not reported.
+export const celsius = (v) => (v == null ? "–" : `${v.toFixed(1)} °C`);
 
 // latLon formats a latitude and longitude in radians, as the mount reports
 // them, with N/S and E/W.
@@ -282,20 +268,12 @@ export function zoomAt(view, px, py, factor) {
   return { z, x: px - k * (px - view.x), y: py - k * (py - view.y) };
 }
 
-// dewText and envText are ScopeStatusFragment's dew heater and weather
-// rows: the heater's power only in Manual mode.
+// dewText is ScopeStatusFragment's dew heater row: the heater's power only
+// in Manual mode.
 export function dewText(f) {
   const mode = f.Mode == null ? "–" : f.Mode === "Auto" ? "Automatic" : f.Mode === "Manual" ? "Manual" : "?";
   const power = f.Mode === "Manual" && f.ManualPowerLevel != null ? `${(f.ManualPowerLevel * 100).toFixed(0)} %` : "–";
   return `${mode}, power ${power}`;
-}
-export function envText(f) {
-  const t = (v) => (v == null ? "–" : `${v.toFixed(2)} °C`);
-  let s = `${t(f.AmbientTemperature)}, ${f.Humidity == null ? "–" : `${f.Humidity.toFixed(0)}%`}, dew point ${t(f.DewPoint)}`;
-  // The telescope (front cell) and CPU, as Celestron's web app shows them.
-  if (f.FrontCellTemperature != null) s += `, telescope ${t(f.FrontCellTemperature)}`;
-  if (f.CpuTemperature != null) s += `, CPU ${t(f.CpuTemperature)}`;
-  return s;
 }
 
 // sliderEdit turns the editor's sliders (brightness, contrast and
@@ -464,4 +442,128 @@ export function tonightRows(c, timeFormat = "24h") {
       c.MoonSet ? ["Sets", t(c.MoonSet)] : ["Does not set", ""],
     ],
   };
+}
+
+// imageStats is the live view strip's Min, Max, Mean and Stdev of an RGBA
+// frame (canvas ImageData), over each pixel's luma, as Celestron's web client.
+export function imageStats(rgba) {
+  const n = rgba.length / 4;
+  if (!n) return null;
+  let min = 255, max = 0, sum = 0, sum2 = 0;
+  for (let i = 0; i < rgba.length; i += 4) {
+    const v = Math.round(0.299 * rgba[i] + 0.587 * rgba[i + 1] + 0.114 * rgba[i + 2]);
+    if (v < min) min = v;
+    if (v > max) max = v;
+    sum += v;
+    sum2 += v * v;
+  }
+  const mean = sum / n;
+  return { min, max, mean, stdev: Math.sqrt(Math.max(0, sum2 / n - mean * mean)) };
+}
+
+// ---- The tabs of Celestron's web client the app has not ----
+
+// wifiMode is the Wi-Fi tab's mode line from Network/GetStatus's WifiStatus.
+export function wifiMode(mode, internet) {
+  const base = { 1: "Initializing…", 2: "Initializing…", 3: "Initializing…", 4: "Network Client", 5: "Direct Connect" }[mode] ?? "Disconnected";
+  return mode === 4 || mode === 5 ? `${base} (${internet ? "Internet" : "No Internet"})` : base;
+}
+// wifiBars is a network's signal as 0–4 bars (0: out of range).
+export function wifiBars(dbm) {
+  if (!dbm) return 0;
+  return dbm >= -55 ? 4 : dbm >= -65 ? 3 : dbm >= -75 ? 2 : 1;
+}
+export const wifiSecurity = (auth) => ({ OPEN: "Open", COMPATIBLE: "WPA", INCOMPATIBLE: "WPA3" })[auth] ?? "—";
+
+// The camera's exposure and ISO sliders run 0–1000 on a log scale, as the
+// web client's: exposure 0.001–1000 s, ISO over the camera's range.
+export const exposureAt = (pos) => 10 ** ((pos / 1000) * 6 - 3);
+export const exposurePos = (s) => Math.round(((Math.log10(Math.min(Math.max(s, 0.001), 1000)) + 3) / 6) * 1000);
+// isoAt snaps to the nearest of the camera's ISO values (the Origin takes
+// only those), isoPos places one.
+export function isoAt(pos, values) {
+  const lo = values[0], hi = values.at(-1), raw = lo * (hi / lo) ** (pos / 1000);
+  return values.reduce((b, v) => (Math.abs(Math.log(v / raw)) < Math.abs(Math.log(b / raw)) ? v : b));
+}
+export function isoPos(iso, values) {
+  const lo = values[0], hi = values.at(-1);
+  return hi === lo ? 0 : Math.round((Math.log(Math.min(Math.max(iso, lo), hi) / lo) / Math.log(hi / lo)) * 1000);
+}
+// exposureText shows an exposure to 3 significant digits (4 from 10 s).
+export const exposureText = (s) => String(Number(s.toPrecision(s >= 10 ? 4 : 3)));
+
+// visibilityText is a target's rise and set as the schedule shows them;
+// fmt formats one of Go's times (RFC 3339 in the observer's zone).
+export function visibilityText(v, fmt) {
+  if (!v) return "–";
+  if (v.NeverRises) return "Does Not Rise";
+  if (v.Circumpolar) return "Does not set";
+  return `Rises ${eventTime(v.Rise, fmt)} / Sets ${eventTime(v.Set, fmt)}`;
+}
+// eventTime formats one of Go's event times, "—" for none (Go's zero time).
+export const eventTime = (s, fmt) => (s && !s.startsWith("0001-") ? fmt(s) : "—");
+// zoneClock is the "hh:mm" an RFC 3339 time reads in its own zone (the
+// observer's, as Go sends it), not the computer's.
+export const zoneClock = (s) => s.slice(11, 16);
+const ms = (s) => (s && !s.startsWith("0001-") ? Date.parse(s) : NaN);
+// scheduleStarts estimates when each scheduled target starts: after the one
+// before it ends, not before it rises nor before now (the Origin waits).
+export function scheduleStarts(entries, vis, now) {
+  let t = now;
+  return entries.map((e, i) => {
+    const rise = ms(vis[i]?.Rise);
+    const start = Math.max(t, vis[i]?.Circumpolar || Number.isNaN(rise) || rise < now ? t : rise);
+    t = start + e.DurationSec * 1000;
+    return start;
+  });
+}
+// byVisibility orders a schedule as the web client's "Sort by Visibility":
+// targets up now by when they set, then those yet to rise by when they
+// rise, then those that never set; it returns the indexes in order.
+export function byVisibility(vis, now) {
+  const key = (v) => {
+    const rise = ms(v?.Rise), set = ms(v?.Set);
+    if (!v || v.Circumpolar) return [2, 0];
+    if (!Number.isNaN(rise) && rise > now) return [1, rise];
+    return [0, Number.isNaN(set) ? Infinity : set];
+  };
+  return vis.map((v, i) => [key(v), i]).sort((a, b) => a[0][0] - b[0][0] || a[0][1] - b[0][1] || a[1] - b[1]).map((x) => x[1]);
+}
+
+// ---- The Planetarium: a stereographic view of the sky from inside ----
+
+const RAD = Math.PI / 180;
+// skyProject places altitude and azimuth (degrees) on the canvas for a view
+// v = { alt, az, scale, cx, cy } (its centre, pixels per unit, the centre
+// pixel): east is left of north, as the sky seen from below. A point near
+// the view's antipode is null, or with clamp pushed far out in its
+// direction (for filling the ground).
+export function skyProject(alt, az, v, clamp = false) {
+  const a = alt * RAD, d = (az - v.az) * RAD, a0 = v.alt * RAD;
+  const cosc = Math.sin(a0) * Math.sin(a) + Math.cos(a0) * Math.cos(a) * Math.cos(d);
+  let x = Math.cos(a) * Math.sin(d), y = Math.cos(a0) * Math.sin(a) - Math.sin(a0) * Math.cos(a) * Math.cos(d);
+  if (cosc < -0.98) {
+    if (!clamp) return null;
+    // Out along its own direction to where cos c = −0.98 lies (radius 2 tan(c/2)).
+    const len = Math.hypot(x, y) || 1;
+    const r = 2 * Math.sqrt((1 + 0.98) / (1 - 0.98));
+    x = (x / len) * r;
+    y = (y / len) * r;
+  } else {
+    const k = 2 / (1 + cosc);
+    x *= k;
+    y *= k;
+  }
+  return [v.cx + x * v.scale, v.cy - y * v.scale];
+}
+// skyScale is the pixels per unit for a field of view fov degrees across
+// width pixels.
+export const skyScale = (fov, width) => width / 2 / (2 * Math.tan((fov * RAD) / 4));
+// starRadius sizes a star by its magnitude, larger as the view narrows.
+export const starRadius = (mag, fov) => Math.max(0.5, (6.8 - mag) * 0.55 * Math.min(2.5, Math.max(1, 60 / fov) ** 0.3));
+// starColor tints a star by its B−V index: blue-white to orange-red.
+export function starColor(bv) {
+  const t = Math.min(Math.max((bv + 0.3) / 2.1, 0), 1);
+  const lerp = (p, q) => Math.round(p + (q - p) * t);
+  return `rgb(${lerp(170, 255)},${lerp(195, 170)},${lerp(255, 110)})`;
 }

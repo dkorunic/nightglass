@@ -52,15 +52,21 @@ type Settings struct {
 	// PendingLists are the mosaics not yet downloaded or dismissed
 	// (ORIGIN_ORPHAN_IMAGE_LISTS_UUIDS), asked about on connect.
 	PendingLists []string
+	// Schedule is the draft of tonight's schedule (the web client's
+	// Schedules tab), kept until it is run or changed.
+	Schedule []ScheduleEntry
 
 	LatDeg, LonDeg      float64 // observer, degrees, east positive
 	ExposureSec         float64 // Origin.java ORIGIN_DEFAULT_MANUAL_EXPOSURE_TIME
 	ISO                 int     // manual ISO (1000 by default, as the web client); 0 is the camera's default
 	SnapshotExposureSec float64 // snapshot (manual live view) exposure, 10 s by default as the web client
 	SlewLimitMinDeg     float64 // scopeCESlewLimitMin: lowest go-to altitude
-	SlewRate            int     // the app's "Rate:" 1–4 (speeds 2, 4, 6, 9); 4 (speed 9) by default, as the web client
-	DitherDistance      int     // pixels, 10 by default as the web client
-	DitherInterval      int     // frames, 5 by default as the web client
+	// SlewSpeed is the Origin's manual rate, 1–9, as Celestron's web client's
+	// slider (9 by default). It replaces the app's 1–4 "SlewRate", whose
+	// saved values would mean other speeds now, so old files get the default.
+	SlewSpeed      int
+	DitherDistance int // pixels, 10 by default as the web client
+	DitherInterval int // frames, 5 by default as the web client
 
 	LaunchCount int // the app's currentLaunchCount, for the Quick Start
 	// NightBrightness dims the window in night mode, percent
@@ -89,11 +95,16 @@ type Settings struct {
 	// The camera and imaging preferences, with the defaults of Celestron's
 	// web client (firmware 1.5.6286): automatic exposure, raw images kept on
 	// the Origin, stopping when stacking fails, no dithering.
-	ManualImaging        bool // Origin.UseManualImaging: else the telescope picks exposure and ISO
-	Snapshot             bool // Origin snapshot mode: manual live view
-	SaveRaw              bool // keep raw images on the Origin (on by default)
-	StopOnPlateSolveFail bool // stop imaging when plate solving fails
-	Dither               bool
+	ManualImaging bool // Origin.UseManualImaging: else the telescope picks exposure and ISO
+	Snapshot      bool // Origin snapshot mode: manual live view
+	SaveRaw       bool // keep raw images on the Origin (on by default)
+	// Calibrate applies darks and flats to a single capture ("Calibrate with
+	// Darks and Flats", on by default as the web client's).
+	Calibrate bool
+	// The web client's Schedules options, off by default as its own.
+	ScheduleAutofocus, SchedulePowerDown bool
+	StopOnPlateSolveFail                 bool // stop imaging when plate solving fails
+	Dither                               bool
 
 	// The app's mosaic composition options (Origin settings, Mosaics), all
 	// on by default.
@@ -118,9 +129,9 @@ func DefaultSettings() Settings {
 	return Settings{
 		TimeZone: DefaultTimeZone(), Catalog: "Messier", ExposureSec: 10,
 		SaveDir: filepath.Join(home, "Pictures", "Origin"),
-		ISO:     1000, SnapshotExposureSec: 10, SaveRaw: true, StopOnPlateSolveFail: true, DitherDistance: 10, DitherInterval: 5,
+		ISO:     1000, SnapshotExposureSec: 10, SaveRaw: true, Calibrate: true, StopOnPlateSolveFail: true, DitherDistance: 10, DitherInterval: 5,
 		NightBrightness: 65, TimeFormat: "24hs", DateOrder: "YMD", CoordFormat: "dms",
-		SlewRate: 4, MosaicFlatten: true, MosaicNormalize: true, MosaicEqualize: true, AutoCrop: true, PostProcess: true, MaxExposureSec: 30,
+		SlewSpeed: 9, MosaicFlatten: true, MosaicNormalize: true, MosaicEqualize: true, AutoCrop: true, PostProcess: true, MaxExposureSec: 30,
 		Cooling: true, CoolingTargetC: 10,
 	}
 }
@@ -153,8 +164,8 @@ func (s Settings) Validate() error {
 	if s.SlewLimitMinDeg < 0 || s.SlewLimitMinDeg >= 90 {
 		errs = append(errs, fmt.Errorf("minimum slew altitude %v outside 0–90°", s.SlewLimitMinDeg))
 	}
-	if s.SlewRate < 0 || s.SlewRate > 4 {
-		errs = append(errs, fmt.Errorf("slew rate %d outside 1–4", s.SlewRate))
+	if s.SlewSpeed < 0 || s.SlewSpeed > 9 {
+		errs = append(errs, fmt.Errorf("slew speed %d outside 1–9", s.SlewSpeed))
 	}
 	if s.DitherDistance < 0 || s.DitherInterval < 0 {
 		errs = append(errs, errors.New("dither distance and interval must not be negative"))
@@ -242,8 +253,8 @@ func repair(s Settings) Settings {
 	if s.SlewLimitMinDeg < 0 || s.SlewLimitMinDeg >= 90 {
 		s.SlewLimitMinDeg = d.SlewLimitMinDeg
 	}
-	if s.SlewRate < 0 || s.SlewRate > 4 {
-		s.SlewRate = d.SlewRate
+	if s.SlewSpeed < 0 || s.SlewSpeed > 9 {
+		s.SlewSpeed = d.SlewSpeed
 	}
 	if !(s.CoolingTargetC >= coolingMin && s.CoolingTargetC <= coolingMax) {
 		s.CoolingTargetC = d.CoolingTargetC

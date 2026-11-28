@@ -17,10 +17,13 @@ import (
 // gotoSpeed is the simulated go-to speed in degrees per second.
 const gotoSpeed = 6.0
 
-// slewSpeeds are the manual speeds for origin.SlewRates in degrees per
-// second, after the usual Celestron hand-control scale (4× and 16×
-// sidereal, 0.5°/s, 4°/s): the Origin's own are not known.
-var slewSpeeds = map[int]float64{2: 4 * sidereal, 4: 16 * sidereal, 6: 0.5, 9: 4}
+// slewSpeeds are the manual speeds for the Origin's rates 1–9 in degrees
+// per second, after the usual Celestron hand-control scale (2× to 32×
+// sidereal, then 0.5, 1, 2 and 4°/s): the Origin's own are not known.
+var slewSpeeds = map[int]float64{
+	1: 2 * sidereal, 2: 4 * sidereal, 3: 8 * sidereal, 4: 16 * sidereal, 5: 32 * sidereal,
+	6: 0.5, 7: 1, 8: 2, 9: 4,
+}
 
 const sidereal = 360.0 / 86164.0905 // degrees per second
 

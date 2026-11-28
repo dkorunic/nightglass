@@ -3,7 +3,7 @@
 
 // Mosaics (the app's mosaic screens).
 import { Events } from "/wails/runtime.js";
-import { $, act, choice, confirmBox } from "./ui.js";
+import { $, act, choice, confirmBox, openInTab } from "./ui.js";
 import { connected, lastTask, rows, selected, setSettings, settings, target } from "./app.js";
 import { viewImage } from "./gallery.js";
 import { composeButton, isImagingState, mosaicAction, mosaicDetail, mosaicSize, tileKind, tileStatus } from "./targets.js";
@@ -130,13 +130,12 @@ async function loadMosaics() {
     return li;
   }));
 }
-$("#open-mosaics").onclick = () => { loadMosaics(); $("#mosaics-dialog").showModal(); };
+$("#open-mosaics").onclick = () => { loadMosaics(); openInTab($("#mosaics-dialog")); };
 
 let mosaic = null, mosaicView = null, tilesAt = 0, composePending = 0;
 const thumbsAsked = new Set(), thumbs = new Set();
 async function openMosaic(m) {
-  mosaic = m;
-  $("#mosaics-dialog").close();
+  mosaic = m; // the list stays in its tab under the capture set
   $("#mosaic-capture-dialog").showModal();
   await refreshMosaic();
 }

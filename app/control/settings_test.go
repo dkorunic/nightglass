@@ -27,19 +27,19 @@ func TestSettingsMissingCorruptAndInvalid(t *testing.T) {
 	}
 	// One bad value costs only itself: the rest is kept, the original backed up.
 	mixed := filepath.Join(dir, "mixed.json")
-	orig := []byte(`{"LatDeg": 45.8, "LonDeg": 16, "SlewRate": 9, "ISO": "loud", "PendingImages": ["run"], "LaunchCount": 7, "EverConnected": true}`)
+	orig := []byte(`{"LatDeg": 45.8, "LonDeg": 16, "SlewSpeed": 12, "ISO": "loud", "PendingImages": ["run"], "LaunchCount": 7, "EverConnected": true}`)
 	_ = os.WriteFile(mixed, orig, 0o644)
 	s, err := LoadSettings(mixed)
-	if err == nil || s.LatDeg != 45.8 || s.SlewRate != 4 || s.ISO != 1000 || len(s.PendingImages) != 1 || s.LaunchCount != 7 || !s.EverConnected {
+	if err == nil || s.LatDeg != 45.8 || s.SlewSpeed != 9 || s.ISO != 1000 || len(s.PendingImages) != 1 || s.LaunchCount != 7 || !s.EverConnected {
 		t.Errorf("one bad value: %+v %v, want only it reset", s, err)
 	}
 	if b, _ := os.ReadFile(mixed + ".bak"); string(b) != string(orig) {
 		t.Errorf("backup %q", b)
 	}
-	if s := DefaultSettings(); s.SlewRate != 4 { // speed 9, the web client's rate and the app's TEL_SLEW_RATE
-		t.Errorf("default slew rate %d, want 4", s.SlewRate)
+	if s := DefaultSettings(); s.SlewSpeed != 9 { // the web client's rate slider starts at 9
+		t.Errorf("default slew speed %d, want 9", s.SlewSpeed)
 	}
-	for _, s := range []Settings{{LatDeg: 91}, {LonDeg: -181}, {TimeZone: "Not/AZone"}, {ISO: -1}, {SlewRate: 5}, {SlewRate: -1}} {
+	for _, s := range []Settings{{LatDeg: 91}, {LonDeg: -181}, {TimeZone: "Not/AZone"}, {ISO: -1}, {SlewSpeed: 10}, {SlewSpeed: -1}} {
 		if s.Validate() == nil {
 			t.Errorf("%+v accepted", s)
 		}

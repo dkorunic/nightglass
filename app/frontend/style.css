@@ -136,6 +136,24 @@ dl.info dt { color: var(--text-2); font-size: var(--fs-xs); align-self: center; 
 dl.info dd { margin: 0; font-family: var(--font-mono); font-size: var(--fs-sm); word-break: break-word; }
 .pad { display: grid; grid-template-columns: repeat(3, 52px); gap: 6px; justify-content: center; margin: 4px 0 8px; }
 .pad button { height: 44px; font-size: 18px; padding: 0; }
+.rate-row { display: flex; align-items: center; gap: 10px; margin: 6px 0 10px; color: var(--text-2); font-size: var(--fs-xs); }
+.rate-row input { flex: 1; }
+/* The Origin's settings in the panes: a label, its control, its value. */
+label.ctl { display: grid; grid-template-columns: 9.5em 1fr 3em; align-items: center; gap: 8px; margin: 8px 0;
+            color: var(--text-2); font-size: var(--fs-xs); }
+label.ctl span { font-family: var(--font-mono); font-size: var(--fs-sm); color: var(--text); text-align: right; }
+.ctl-label { width: 9.5em; color: var(--text-2); font-size: var(--fs-xs); }
+#ctrl-content label.check { display: flex; margin: 8px 0; font-size: var(--fs-sm); }
+#ctrl-content .row label.check { display: inline-flex; margin: 0 8px 0 0; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin: 8px 0; }
+.grid2 button { font-weight: 600; font-size: var(--fs-xs); padding: 4px 6px; }
+.grid2 > :only-child, .grid2 > :last-child:nth-child(odd) { grid-column: 1 / -1; }
+/* The panes' fields line up with their readings: label column, then control. */
+#ctrl-content .field { display: grid; grid-template-columns: 9.5em 1fr; font-size: var(--fs-xs); }
+#ctrl-content .field input, #ctrl-content .field select { width: 100%; }
+.steps { display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; margin: 6px 0; }
+.steps button { padding: 4px 0; }
+#rate-val { font-family: var(--font-mono); color: var(--text); min-width: 1.5em; text-align: right; }
 .value-btn { font-family: var(--font-mono); font-size: var(--fs-lg); min-width: 8em; }
 #selected { font-weight: 600; margin-bottom: 6px; }
 
@@ -152,10 +170,16 @@ dl.info dd { margin: 0; font-family: var(--font-mono); font-size: var(--fs-sm); 
 #frame-empty { position: absolute; color: #64748b; }
 #final-box { position: absolute; padding: 12px 16px; max-width: 70%; white-space: pre-line; text-align: center;
              background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); }
-.lv-controls { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; background: var(--surface);
-               border-top: 1px solid var(--border); padding: 6px 12px; }
-.lv-controls label { display: flex; align-items: center; gap: 8px; color: var(--text-2); font-size: var(--fs-sm); }
-#frame-info { flex: 1 1 260px; color: var(--text-2); font-size: var(--fs-sm); min-height: 1.4em; }
+.lv-controls { display: flex; gap: 12px; align-items: center; background: var(--surface); white-space: nowrap;
+               overflow-x: auto; min-height: 34px; border-top: 1px solid var(--border); padding: 5px 12px;
+               font-size: var(--fs-xs); color: var(--text-2); }
+.lv-zoom { display: flex; align-items: center; gap: 4px; }
+.lv-zoom button { width: 22px; height: 22px; padding: 0; font-size: 15px; line-height: 1; }
+#zoom-label { min-width: 44px; text-align: center; font-weight: 600; color: var(--text); }
+.lv-sep { width: 1px; height: 16px; background: var(--border); flex-shrink: 0; }
+.lv-field { display: flex; align-items: center; gap: 4px; }
+.lv-field b { min-width: 40px; color: var(--text); font-weight: 500; font-family: var(--font-mono); }
+#frame-info { margin: 0; color: var(--text-2); font-size: var(--fs-sm); }
 #crosshair { position: absolute; width: 41px; height: 41px; margin: -20px 0 0 -20px; pointer-events: none;
              background: linear-gradient(var(--accent), var(--accent)) center / 1px 100% no-repeat,
                          linear-gradient(var(--accent), var(--accent)) center / 100% 1px no-repeat; }
@@ -178,6 +202,22 @@ dl.info dd { margin: 0; font-family: var(--font-mono); font-size: var(--fs-sm); 
 .trow.sel { background: var(--accent-muted); }
 .trow.down { color: var(--muted); }
 
+/* ---- Views in tabs (Final Image, File Manager, Tonight, Mosaics) ----
+   Once dialogs, now the web client's main tabs: a dialog shown with show()
+   inside its pane fills it as a page; leaving the tab closes it. */
+.view-pane dialog { position: static; display: none; margin: 0; width: 100%; max-width: none; max-height: none;
+                    min-width: 0; border: none; border-radius: 0; box-shadow: none; padding: 16px 20px;
+                    background: var(--bg); color: var(--text); overflow: auto; }
+.view-pane dialog[open] { display: block; flex: 1; outline: none; }
+.view-bar { display: flex; gap: 6px; align-items: center; padding-bottom: 8px; margin-bottom: 8px; border-bottom: 1px solid var(--border); }
+.view-bar h2 { margin: 0; font-size: var(--fs-md); font-weight: 700; }
+.view-note { color: var(--text-2); font-size: var(--fs-sm); }
+.view-pane dialog > h2:first-child { padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+.view-pane dialog .close { display: none; }
+.view-pane #gallery-grid, .view-pane #mc-tiles { max-height: none; }
+/* The views' former buttons stay (the GUI tests use them), unseen. */
+#open-gallery, #open-files, #open-tonight, #open-mosaics, #open-schedules { display: none; }
+
 /* ---- Modals ---- */
 dialog { background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius-lg);
          min-width: 380px; max-width: 92vw; max-height: 90vh; padding: 18px 20px; box-shadow: 0 20px 50px rgb(0 0 0 / 0.35); }
@@ -199,7 +239,6 @@ dialog legend { font-size: var(--fs-xs); font-weight: 700; letter-spacing: 0.06e
 #files-list { padding: 0; list-style: none; }
 #files-list li { display: flex; gap: 6px; align-items: center; margin: 4px 0; padding: 6px 8px; background: var(--surface-2); border-radius: var(--radius); }
 #files-list li span { flex: 1; }
-#origin-form fieldset label:not(.check) { display: flex; gap: 6px; align-items: center; }
 .tab.on { color: var(--accent); border-color: var(--accent); }
 #mosaics-list, #target-pick-list { padding: 0; list-style: none; }
 #mosaics-list li, #target-pick-list li { cursor: pointer; margin: 2px 0; padding: 5px 8px; border-radius: var(--radius); }
@@ -251,3 +290,71 @@ dialog legend { font-size: var(--fs-xs); font-weight: 700; letter-spacing: 0.06e
          box-shadow: 0 8px 24px rgb(0 0 0 / 0.25); max-width: 420px; }
 .toast.error { background: var(--toast-err); border-color: var(--bad); }
 .toast.warn { background: var(--toast-warn); border-color: var(--warn); }
+
+/* ---- Final Image: the last final image; the gallery over it ---- */
+#final-viewer { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+#final-viewer > .toolbar { padding: 6px 12px; background: var(--surface); border-bottom: 1px solid var(--border); }
+#final-info { margin: 0; color: var(--text-2); font-size: var(--fs-sm); }
+#final-frame { max-width: 100%; max-height: 100%; object-fit: contain; transform-origin: 0 0; }
+#final-frame.zoomed { cursor: grab; }
+#final-empty { position: absolute; max-width: 60ch; text-align: center; color: #64748b; font-style: italic; }
+#mp-gallery:has(#gallery-dialog[open]) #final-viewer { display: none; }
+.view-pane dialog .close.back { display: inline-block; }
+.lv-controls input[type=range] { width: 90px; }
+
+/* ---- Camera: the region of interest on the live view ---- */
+#roi-box { position: absolute; border: 1px dashed var(--accent); background: rgb(59 130 246 / 0.12); pointer-events: none; }
+.frame-box.roi-mode #frame { cursor: crosshair; }
+label.ctl.num { grid-template-columns: 9.5em 1fr 4.5em; }
+label.ctl.num input:last-child { width: 100%; font-family: var(--font-mono); }
+
+/* ---- Wi-Fi: the network lists ---- */
+.netlist { list-style: none; padding: 0; margin: 6px 0; border: 1px solid var(--border); border-radius: var(--radius);
+           max-height: 190px; overflow-y: auto; font-size: var(--fs-sm); }
+.netlist li { display: flex; align-items: center; gap: 6px; padding: 5px 8px; cursor: pointer; }
+.netlist li:hover { background: var(--surface-2); }
+.netlist li.empty { color: var(--text-2); font-style: italic; cursor: default; }
+.netlist li.incompatible { opacity: 0.5; }
+.netlist .tick { width: 1em; color: var(--accent); }
+.netlist .ssid { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.netlist .bad { color: var(--danger, #dc2626); font-size: var(--fs-xs); }
+.netlist .sec { color: var(--text-2); font-size: var(--fs-xs); width: 3em; text-align: right; }
+.netlist .forget { padding: 0 6px; }
+/* Signal as four bars, the strength's filled. */
+.bars { width: 18px; height: 12px; background:
+  linear-gradient(var(--b1, var(--border)), var(--b1, var(--border))) 0 100% / 3px 25% no-repeat,
+  linear-gradient(var(--b2, var(--border)), var(--b2, var(--border))) 5px 100% / 3px 50% no-repeat,
+  linear-gradient(var(--b3, var(--border)), var(--b3, var(--border))) 10px 100% / 3px 75% no-repeat,
+  linear-gradient(var(--b4, var(--border)), var(--b4, var(--border))) 15px 100% / 3px 100% no-repeat; }
+.bars.b1 { --b1: var(--accent); }
+.bars.b2 { --b1: var(--accent); --b2: var(--accent); }
+.bars.b3 { --b1: var(--accent); --b2: var(--accent); --b3: var(--accent); }
+.bars.b4 { --b1: var(--accent); --b2: var(--accent); --b3: var(--accent); --b4: var(--accent); }
+
+/* ---- Schedules, with tonight's Sun and Moon beside them ---- */
+#mp-schedules.active { flex-direction: row; }
+#mp-schedules #schedules-dialog[open] { flex: 3; }
+#mp-schedules #tonight-dialog[open] { flex: 1; min-width: 220px; border-left: 1px solid var(--border); }
+#schedules-dialog .view-bar label.check { display: inline-flex; margin: 0 0 0 10px; font-size: var(--fs-sm); }
+.sched-row { display: grid; grid-template-columns: 1.6fr 1.1fr 0.8fr 0.8fr 0.9fr 1.8fr 28px 28px 28px; gap: 6px;
+             align-items: center; padding: 4px 0; border-bottom: 1px solid var(--border-subtle, var(--border)); font-size: var(--fs-sm); }
+.sched-row.head { color: var(--text-2); font-size: var(--fs-xs); font-weight: 600; }
+.sched-row.running { opacity: 0.75; }
+.sched-row .status { grid-column: span 3; }
+.sched-row input, .sched-row select { width: 100%; }
+.sched-row button { padding: 2px 0; }
+#sched-previous { list-style: none; padding: 0; }
+#sched-previous li { border-bottom: 1px solid var(--border-subtle, var(--border)); padding: 4px 0; }
+.prev-head { display: flex; gap: 6px; align-items: center; }
+.prev-head .grow { cursor: pointer; }
+.prev-detail table { width: 100%; font-size: var(--fs-sm); margin: 6px 0; border-collapse: collapse; }
+.prev-detail th { text-align: left; color: var(--text-2); font-weight: 600; }
+
+/* ---- Planetarium ---- */
+#sky-box { flex: 1; position: relative; min-height: 0; background: #05070d; overflow: hidden; }
+#sky { position: absolute; inset: 0; width: 100%; height: 100%; cursor: grab; touch-action: none; }
+#sky:active { cursor: grabbing; }
+#sky-empty { position: absolute; inset: 0; margin: auto; height: 1.5em; text-align: center; color: #94a3b8; }
+#sky-nav button:not(.lv-zoom button) { padding: 3px 10px; font-size: var(--fs-xs); }
+#sky-fov { min-width: 76px; text-align: center; font-weight: 600; color: var(--text); }
+#sky-target { font-family: inherit; }

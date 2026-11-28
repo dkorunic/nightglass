@@ -47,7 +47,7 @@ const usage = `usage: originctl [-host ip[:port]] [-timeout 10s] command [flags]
   finish                            end imaging and fetch the final image
   cancel                            discard the imaging run (no final image)
   halt                              halt every task
-  slew -alt R -azm R [-for 1s]      move at 0, ±2, ±4, ±6 or ±9, then stop
+  slew -alt R -azm R [-for 1s]      move at a rate 0 to ±9 (the Origin's), then stop
   focus -by N | -to N | -auto [-terrestrial | -from-origin]
                                     move or autofocus the focuser (-from-origin:
                                     infinity autofocus where the Origin chooses,

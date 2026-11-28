@@ -35,7 +35,7 @@ expect() { # expect DESCRIPTION OUTPUT ERE-PATTERN (grep -E: GNU and BSD grep ag
 }
 status() { curl -s -o /dev/null -w '%{http_code} %{content_type}' "http://$APP$1"; }
 
-for f in / /app.js /ui.js /targets.js /files.js /origin.js /mosaics.js /quickstart.js /gallery.js /style.css /wails/runtime.js; do
+for f in / /app.js /ui.js /targets.js /files.js /origin.js /mosaics.js /quickstart.js /gallery.js /camera.js /wifi.js /optics.js /schedules.js /finalview.js /planetarium.js /style.css /wails/runtime.js; do
   expect "asset $f" "$(status "$f")" '^200'
 done
 expect "catalogs" "$(call Catalogs)" '"Name":"Solar System","Count":8.*"Name":"Messier","Count":110'
@@ -46,7 +46,7 @@ expect "connect" "$(call Connect '" http://'"$FAKE"'/ "')" '^\{\}$|^null$'
 sleep 2.5
 expect "status" "$(call Status)" '"Key":"Mount/GetStatus"'
 expect "live frame" "$(status /frame/live)" '^200 image/jpeg'
-expect "bad slew rate refused" "$(call Slew 5 0)" 'want 0 or'
+expect "bad slew rate refused" "$(call Slew 10 0)" 'want 0 to'
 expect "slew" "$(call Slew 6 0)" '^\{\}$|^null$'
 expect "stop slew" "$(call StopSlew)" '^\{\}$|^null$'
 expect "focus" "$(call FocusTo 30500)" '^\{\}$|^null$'

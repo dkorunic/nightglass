@@ -48,7 +48,9 @@ The fake announces itself for discovery (`-announce 0` turns it off; a second
 one on another port, e.g. `-listen 127.0.0.1:8081`, brings up the picker),
 moves its mount for go-tos, the slew pad and Reframe, focuses (stars blur
 off focus), reboots or powers down when told to (`-reboot` sets how long a
-reboot takes), offers a flat panel with `-elpanel`, and serves star fields of
+reboot takes), offers a flat panel with `-elpanel`, configurable optics with
+`-optics` (an Origin's are fixed), Wi-Fi networks to join, imaging lists
+(Schedules) and video capture, and serves star fields of
 where it points (with the position in each image's notification), less noisy
 as a stack deepens.
 
@@ -101,6 +103,19 @@ and commit the YAML and the regenerated `*.gob` together. CI fails if they
 disagree. If no `*.gob` exists at all (a fresh tree), add
 `-tags catalogbootstrap` to that command once.
 
+The Planetarium's stars and constellations (`catalog/sky.gob`) are packed
+from the Yale Bright Star Catalogue (public domain) and d3-celestial's
+constellation lines and names (BSD 3-Clause); sources and licences are in
+`catalog/SKY-NOTICE.md`, shown in About. To rebuild it:
+
+```sh
+curl -O http://tdc-www.harvard.edu/catalogs/bsc5.dat.gz && gunzip bsc5.dat.gz
+curl -O https://raw.githubusercontent.com/ofrohn/d3-celestial/master/data/constellations.lines.json
+curl -O https://raw.githubusercontent.com/ofrohn/d3-celestial/master/data/constellations.json
+go run catalog/skygen.go -bsc bsc5.dat -lines constellations.lines.json -names constellations.json
+go test ./catalog -run TestSky
+```
+
 ## Hardware acceptance checklist
 
 Run against a real Origin, from the GUI and once with `originctl`. Items marked
@@ -116,7 +131,7 @@ Run against a real Origin, from the GUI and once with `originctl`. Items marked
 3. Settings: enter location and time zone. Initialize & align completes and
    *Aligned* turns yes (latitude/longitude go out as radians, which firmware
    1.5.6286 checks them as).
-4. Slew pad and arrow keys move the mount at each rate (1–4); releasing stops it.
+4. Slew pad and arrow keys move the mount at each rate (1–9 on the slider, as the web client's); releasing stops it, and rates 1–5 are slow enough for centring.
    Switching to another window mid-slew stops it. Up and right send
    +`AltRate` and +`AzmRate`, as Celestron's web app does; **verify** right
    is azimuth-increasing.
@@ -274,6 +289,35 @@ Run against a real Origin, from the GUI and once with `originctl`. Items marked
     10 s at ISO 1000, a new mosaic is 3° × 3° with 600 s tiles. **Verify**
     autofocus with `UseFineFocus` (sent as the web client does) still
     converges as the app's did.
+44. Wi-Fi tab: the mode, IP address and both lists match the Origin (a
+    dual-band router listed once); joining a known, an open and a secured
+    network moves the Origin there; a wrong passphrase shows "[Bad
+    Password]"; Force Direct Connect on and off, the 5 GHz switch and a new
+    Direct Connect password work. **Verify** the reply keys of
+    `GetVisibleWiFi` and `Get5GHzAccessPoint`, taken from the web client only.
+45. Optics tab: hidden on an Origin (it refuses Optics). Only on a telescope
+    that answers Optics: a model, a reducer and custom figures are kept.
+46. Schedules: two targets scheduled from the Target tab run on the Origin in
+    turn, the later one waiting for its rise (`MinimumStartTime`); the list
+    then appears under Previous Schedules with each target's frames;
+    Rerun (only failed) and Delete (with images) work; Power Down After
+    Completion powers it off.
+47. Camera tab: model, serial, firmware, SDK, image and pixel size match;
+    LiveStream off stops live frames; binning, bit depth and white balance
+    change the live view; Capture Single Image with and without Calibrate;
+    Start Stacking in manual and automatic exposure; Capture Video (exposure
+    under 0.1 s) with and without a region and a frame limit writes a SER
+    or AVI folder; the Filter select asks to refocus.
+48. Final Image: the last final image; Strength, Background and De-noise
+    change only the view (the Origin's stretch and saved files unchanged).
+49. Target tab: Rise, Transit and Set Time agree with a planetarium for the
+    location (within a minute or two).
+50. Factory Reset: the Origin resets and restarts, and Nightglass
+    reconnects (to its access point, if its Wi-Fi was reset).
+51. Planetarium: the telescope's reticle sits on the star it points at after
+    alignment (the mount's own Alt/Azm), a clicked object or star becomes
+    the target and Goto Target slews to it, and Center Target / Center
+    Telescope turn the view to them.
 
 ## License
 

@@ -96,8 +96,14 @@ func TestSlewRates(t *testing.T) {
 	if m["AltRate"] != 4.0 || m["AzmRate"] != -9.0 {
 		t.Errorf("payload %v", m)
 	}
-	if err := c.Slew(context.Background(), 5, 0); err == nil {
-		t.Error("rate 5 accepted")
+	// The Origin's nine rates, as Celestron's web client's 1–9 slider.
+	for r := 1; r <= 9; r++ {
+		if err := c.Slew(context.Background(), r, -r); err != nil {
+			t.Errorf("rate %d refused: %v", r, err)
+		}
+	}
+	if err := c.Slew(context.Background(), 10, 0); err == nil {
+		t.Error("rate 10 accepted")
 	}
 }
 

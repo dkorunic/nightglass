@@ -24,6 +24,7 @@ import (
 	"path/filepath"
 	"runtime/debug"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -282,7 +283,7 @@ func (a *App) SaveSettings(s Settings) error {
 		s.SnapshotExposureSec = min(s.SnapshotExposureSec, hi)
 	}
 	s.PendingImages, s.Favorites, s.LaunchCount, s.RemoteVersions = cur.PendingImages, cur.Favorites, cur.LaunchCount, cur.RemoteVersions
-	s.Mosaics, s.PendingLists = cur.Mosaics, cur.PendingLists
+	s.Mosaics, s.PendingLists, s.Schedule = cur.Mosaics, cur.PendingLists, cur.Schedule
 	s.OriginModel, s.OriginVersion, s.Images = cur.OriginModel, cur.OriginVersion, cur.Images
 	s.LastAnnouncement, s.ManualHost, s.EverConnected = cur.LastAnnouncement, cur.ManualHost, cur.EverConnected
 	s.Host, s.Catalog = cur.Host, cur.Catalog // set by Connect and Targets
@@ -1390,6 +1391,11 @@ func (a *App) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 		return
 	}
+	if strings.Trim(r.URL.Path, "/") == "final/view" {
+		a.serveFinalView(w, r)
+
+		return
+	}
 	a.mu.Lock()
 	f, ok := a.frames[strings.Trim(r.URL.Path, "/")]
 	a.mu.Unlock()
@@ -1659,8 +1665,9 @@ func (a *App) statusIn() (statusIn, map[string]bool) {
 	return in, have
 }
 
-// About is the catalog NOTICE: source commit, licenses and credits.
-func (a *App) About() string { return catalog.Notice() }
+// About is the catalog NOTICE (source commit, licenses and credits) and the
+// Planetarium sky's sources and licences (d3-celestial's BSD notice must ship).
+func (a *App) About() string { return catalog.Notice() + "\n\n" + catalog.SkyNotice() }
 
 // siteZone is the site's time zone, else the computer's.
 func siteZone(s Settings) *time.Location {
@@ -1931,4 +1938,51 @@ func openNew(base, ext string) (*os.File, error) {
 			return f, err
 		}
 	}
+}
+
+// serveFinalView serves the final master stretched as the Final Image tab
+// asks (s strength and b background, 0..1; d de-noise, 0–9), on the
+// computer only, as Celestron's web client: the Origin's stretch is
+// unchanged. An 8-bit final has nothing to stretch: 409.
+func (a *App) serveFinalView(w http.ResponseWriter, r *http.Request) {
+	// The final as it arrives (its event comes before it is saved and kept
+	// as lastFinal), else the one kept.
+	a.mu.Lock()
+	f := a.lastFinal
+	if cur, ok := a.frames[kindFinal]; ok {
+		f = &cur
+	}
+	a.mu.Unlock()
+	if f == nil {
+		http.NotFound(w, r)
+
+		return
+	}
+	q := r.URL.Query()
+	num := func(k string, lo, hi, def float64) float64 {
+		v, err := strconv.ParseFloat(q.Get(k), 64)
+		if err != nil || math.IsNaN(v) {
+			return def
+		}
+
+		return min(max(v, lo), hi)
+	}
+	crop := 0
+	if s := a.Settings(); s.PostProcess && s.AutoCrop {
+		crop = 32 // as the final was cropped
+	}
+	b, err := origin.Restretch(f.Original, num("s", 0, 1, -1), num("b", 0, 1, -1), int(num("d", 0, 9, 0)), crop)
+	if errors.Is(err, origin.ErrShallow) {
+		http.Error(w, err.Error(), http.StatusConflict)
+
+		return
+	}
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+
+		return
+	}
+	w.Header().Set("Content-Type", "image/png")
+	w.Header().Set("Cache-Control", "no-store")
+	_, _ = w.Write(b)
 }

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // The Origin file manager (RemoteFilesManagerFragment).
-import { $, act, choice, confirmBox, showAlert } from "./ui.js";
+import { $, act, choice, confirmBox, openInTab, showAlert } from "./ui.js";
 import { connected, lastDisk, lastTask, lastTransfer } from "./app.js";
 import { fileStatus } from "./targets.js";
 
@@ -52,7 +52,7 @@ $("#open-files").onclick = () => {
   updateFilesStatus();
   loadFiles();
   act("FilesOpened"); // disk status and undownloaded runs, as the app's file manager
-  $("#files-dialog").showModal();
+  openInTab($("#files-dialog"));
 };
 $("#files-refresh").onclick = loadFiles;
 // Copy All cancels a copy under way; else it needs an idle Origin.

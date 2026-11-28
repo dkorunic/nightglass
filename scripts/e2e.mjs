@@ -67,14 +67,16 @@ test("connect to the fake Origin: status, live view, labels", async () => {
   await p.js(`${q("#host")}.value = ${JSON.stringify(FAKE)}`);
   await click("#connect");
   await p.until(`${q("#conn")}.textContent.startsWith("Connected to")`, 10000);
-  await p.until(`${q("#st-battery")}.textContent.includes("V (~")`); // the battery estimate
+  await p.until(`${q("#st-battery")}.textContent.includes("(~")`); // the battery estimate
+  await p.until(`${q("#st-voltage")}.textContent.endsWith(" V")`);
   await p.until(`${q("#st-task")}.textContent === "Ready To Image"`);
   await p.until(`${q("#frame")}.getAttribute("src")?.startsWith("/frame/live")`, 10000);
   assert.equal(await p.js(`${q("#initialize")}.hidden`), true, "initialize hidden on an initialized Origin");
 });
 
-test("Origin settings: version and updates", async () => {
+test("Origin settings in the panes: version and updates", async () => {
   await click("#open-origin");
+  await p.until(`${q("#cp-system")}.classList.contains("active")`);
   await p.until(`${q("#info-version")}.textContent === "1.1.4248"`);
   assert.equal(await text("#update-origin"), "[Unknown]: No Internet Access");
   // Restoring factory darks is confirmed once the Origin answers.
@@ -85,7 +87,6 @@ test("Origin settings: version and updates", async () => {
   // Nightglass's own log is saved on request.
   await click("#save-app-log");
   await p.until(`[...document.querySelectorAll("#toasts .toast")].some((t) => /Saved .*Nightglass-log-/.test(t.textContent))`);
-  await p.js(`${q("#origin-dialog")}.close()`);
 });
 
 test("imaging: a run, its stack, finish, the final image saved", async () => {
@@ -157,6 +158,61 @@ test("mosaic: plan, begin, listed, its tiles, cancelled", async () => {
   await choose("End Mosaic Capture");
   await choose("End Capture Now");
   await p.until(`${q("#cancel-imaging")}.textContent === "Cancel imaging"`, 10000);
+});
+
+// The tabs of Celestron's web client the app has not.
+test("final image: the last final image, stretched here", async () => {
+  await click(".tab[data-pane='mp-gallery']");
+  await p.until(`!${q("#final-frame")}.hidden && ${q("#final-frame")}.src.includes("/frame/final/view")`);
+  await p.until(`${q("#final-frame")}.complete && ${q("#final-frame")}.naturalWidth > 0`, 10000);
+  await p.js(`(() => { const s = ${q("#final-denoise")}; s.value = 2; s.dispatchEvent(new Event("change")); })()`);
+  await p.until(`${q("#final-frame")}.src.includes("d=2")`);
+  await click("#open-saved");
+  await p.until(`${q("#gallery-dialog")}.open`);
+  await p.js(`${q("#gallery-dialog")}.close()`);
+});
+
+test("camera tab: the camera's figures and controls", async () => {
+  await click(".tab[data-pane='cp-camera']");
+  await p.until(`${q("#cam-model")}.textContent.includes("simulated")`, 5000);
+  assert.equal(await text("#cam-size"), "3072 x 2048");
+  await p.until(`!${q("#cam-bin")}.disabled && ${q("#cam-bin")}.options.length === 2`);
+});
+
+test("wi-fi tab: known and visible networks", async () => {
+  await click(".tab[data-pane='cp-wifi']");
+  await p.until(`${q("#wifi-mode")}.textContent.startsWith("Network Client")`, 5000);
+  await p.until(`[...document.querySelectorAll("#wifi-known .ssid")].some((s) => s.textContent === "HomeNet")`);
+  // A dual-band router is listed once.
+  assert.equal(await p.js(`[...document.querySelectorAll("#wifi-visible .ssid")].filter((s) => s.textContent === "HomeNet").length`), 1);
+  // An Origin refuses Optics: no Optics tab.
+  assert.equal(await p.js(`${q(".tab[data-pane='cp-optics']")}.hidden`), true);
+});
+
+test("schedules: a target scheduled, then run by the Origin", async () => {
+  await p.until(`${q("#cancel-imaging")}.disabled`, 20000); // the mosaic cancelled
+  await click(".tab[data-pane='mp-targets']");
+  await p.js(`[...document.querySelectorAll("#rows .trow")].find((r) => r.textContent.startsWith("M 1"))?.click()`);
+  await p.until(`!${q("#schedule-target")}.disabled`, 5000);
+  await click("#schedule-target");
+  await p.until(`${q("#schedules-dialog")}.open && document.querySelectorAll("#sched-table .sched-row:not(.head)").length === 1`, 5000);
+  assert.match(await text("#sched-table .sched-row:not(.head) .name"), /^M 1/);
+  await p.until(`!${q("#sched-run")}.disabled`, 10000);
+  await click("#sched-run");
+  await p.until(`${q("#sched-run")}.textContent === "Imaging List Running…"`, 10000);
+});
+
+test("planetarium: the sky, a target chosen, Center", async () => {
+  await click(".tab[data-pane='mp-planetarium']");
+  await p.until(`${q("#sky-empty")}.hidden && ${q("#sky")}.width > 0`, 10000);
+  assert.match(await text("#sky-fov"), /^\d+° × \d+°$/);
+  await click(".tab[data-pane='mp-targets']");
+  await p.js(`document.querySelectorAll("#rows .trow")[0].click()`);
+  await p.until(`!${q("#center-target")}.disabled`);
+  await click("#center-target");
+  await p.until(`${q("#mp-planetarium")}.classList.contains("active") && ${q("#sky-target")}.textContent !== "None"`);
+  // Centred on it, the view narrowed to at most 60°.
+  await p.until(`/^\\d+° × 60°$|^60° × \\d+°$/.test(${q("#sky-fov")}.textContent)`);
 });
 
 test("no page errors", () => {

@@ -16,6 +16,7 @@
     <span id="conn" class="badge off" title="Not connected">Not connected</span>
     <div class="sep"></div>
     <button id="initialize" class="btn-primary" hidden></button>
+    <button id="reinit" class="needs-conn" disabled>Re-Initialize</button>
     <button id="finish-imaging" class="needs-conn btn-primary" disabled>Finish imaging</button>
     <button id="cancel-imaging" class="needs-conn btn-danger" disabled>Cancel imaging</button>
     <div class="sep"></div>
@@ -34,11 +35,12 @@
     <nav class="statusbar-menu">
       <button id="open-connect" class="btn-ghost">Connect…</button>
       <button id="open-settings" class="btn-ghost">Settings</button>
-      <button id="open-origin" class="btn-ghost">Origin</button>
+      <button id="open-origin" class="btn-ghost" hidden>Origin</button>
       <button id="open-files" class="needs-conn btn-ghost">Files</button>
       <button id="open-gallery" class="btn-ghost">Gallery</button>
       <button id="open-mosaics" class="btn-ghost">Mosaics</button>
       <button id="open-tonight" class="btn-ghost">Tonight</button>
+      <button id="open-schedules" class="btn-ghost">Schedules</button>
       <button id="open-about" class="btn-ghost">About</button>
       <button id="theme-toggle" class="btn-ghost" title="Light or dark theme">Light</button>
       <button id="night-toggle" class="btn-ghost" title="Night mode (N)">Night</button>
@@ -48,56 +50,160 @@
 
   <main id="lower">
     <div id="ctrl-panel">
-      <!-- The web client's control tabs, in its order (Target, System, Power,
-           Mount, Camera, Focuser, Environment), each listing its readings. -->
+      <!-- The web client's control tabs, in its order (Target, System, Wi-Fi,
+           Power, Mount, Camera, Optics, Focuser, Environment). -->
       <nav id="ctrl-tabs" class="tabstrip vertical" role="tablist" aria-label="Controls">
-        <button class="tab active" role="tab" data-pane="cp-target">Target</button>
+        <button class="tab active" role="tab" data-pane="cp-planetarium">Planetarium</button>
+        <button class="tab" role="tab" data-pane="cp-target">Target</button>
         <button class="tab" role="tab" data-pane="cp-system">System</button>
+        <button class="tab" role="tab" data-pane="cp-wifi">Wi-Fi</button>
         <button class="tab" role="tab" data-pane="cp-power">Power</button>
         <button class="tab" role="tab" data-pane="cp-mount">Mount</button>
         <button class="tab" role="tab" data-pane="cp-camera">Camera</button>
+        <!-- Shown only when the Origin answers Optics (an Origin's optics are fixed). -->
+        <button class="tab" role="tab" data-pane="cp-optics" hidden>Optics</button>
         <button class="tab" role="tab" data-pane="cp-focuser">Focuser</button>
         <button class="tab" role="tab" data-pane="cp-environment">Environment</button>
       </nav>
       <div id="ctrl-content">
-        <section id="cp-target" class="pane active" role="tabpanel">
+        <!-- What the Planetarium shows, and for where and when. -->
+        <section id="cp-planetarium" class="pane active" role="tabpanel">
+          <h2 class="pane-heading">Planetarium</h2>
+          <div class="section">
+            <dl class="info">
+              <dt>Location</dt><dd id="sky-place">–</dd>
+              <dt>Time</dt><dd id="sky-time">–</dd>
+            </dl>
+          </div>
+          <div class="section">
+            <div class="section-title">Show</div>
+            <label class="check"><input type="checkbox" data-sky="lines" checked> Constellation Lines</label>
+            <label class="check"><input type="checkbox" data-sky="cnames" checked> Constellation Names</label>
+            <label class="check"><input type="checkbox" data-sky="snames" checked> Star Names</label>
+            <label class="check"><input type="checkbox" data-sky="dso" checked> Target List Objects</label>
+            <label class="check"><input type="checkbox" data-sky="solar" checked> Moon and Planets</label>
+            <label class="check"><input type="checkbox" data-sky="grid" checked> Alt/Az Grid</label>
+            <label class="check"><input type="checkbox" data-sky="ground" checked> Ground</label>
+            <label class="ctl">Faintest Stars<input id="sky-mag" type="range" min="2" max="6.5" step="0.5" value="6"><span id="sky-mag-val">6.0</span></label>
+          </div>
+          <p class="view-note">Click an object to make it the target. Drag to look around, scroll or −/+ to zoom.</p>
+        </section>
+
+        <section id="cp-target" class="pane" role="tabpanel">
           <h2 class="pane-heading">Target</h2>
           <div class="section">
-            <div class="section-title">Selected</div>
+            <div class="section-title">Object</div>
             <p id="selected">No target selected</p>
-            <label class="field">RA <input id="ra" placeholder="RA h m s" size="12"></label>
-            <label class="field">Dec <input id="dec" placeholder="Dec ° ′ ″" size="12"></label>
+            <dl class="info">
+              <dt>Common Name</dt><dd id="tg-name">–</dd>
+              <dt>Catalog No.</dt><dd id="tg-id">–</dd>
+              <dt>Object Type</dt><dd id="tg-type">–</dd>
+              <dt>Apparent Size</dt><dd id="tg-size">–</dd>
+              <dt>Magnitude</dt><dd id="tg-mag">–</dd>
+              <dt>Constellation</dt><dd id="tg-con">–</dd>
+            </dl>
+          </div>
+          <div class="section">
+            <div class="section-title">Coordinates</div>
+            <label class="field">Right Ascension <input id="ra" placeholder="RA h m s" size="12"></label>
+            <label class="field">Declination <input id="dec" placeholder="Dec ° ′ ″" size="12"></label>
+            <dl class="info">
+              <dt>Altitude</dt><dd id="tg-alt">–</dd>
+              <dt>Azimuth</dt><dd id="tg-az">–</dd>
+            </dl>
+          </div>
+          <div class="section">
+            <div class="section-title">Visibility</div>
+            <dl class="info">
+              <dt>Rise Time</dt><dd id="tg-rise">–</dd>
+              <dt>Transit Time</dt><dd id="tg-transit">–</dd>
+              <dt>Set Time</dt><dd id="tg-set">–</dd>
+            </dl>
           </div>
           <div class="section">
             <div class="section-title">Actions</div>
             <div class="row">
+              <button id="center-target" disabled title="Center the Planetarium on the target">Center</button>
               <button id="goto" class="needs-conn btn-primary" disabled>Go to</button>
               <button id="image" class="needs-conn btn-primary" disabled>Image</button>
               <button id="mosaic" class="needs-conn" disabled title="Image a larger area as tiles, composed on the Origin">Mosaic…</button>
+              <button id="schedule-target" disabled title="Add to tonight's schedule">Schedule</button>
             </div>
             <label class="field" title="The Origin ends the run itself after this long; empty: until Finish">Stop after (min)
               <input id="duration" type="number" min="0" step="1" size="4" placeholder="–"></label>
           </div>
         </section>
 
+        <!-- The panes below hold the Origin's own settings where the web
+             client keeps them; their controls belong to #origin-form
+             (form="origin-form"), which origin.js reads and renders. -->
         <section id="cp-system" class="pane" role="tabpanel">
           <h2 class="pane-heading">System</h2>
           <div class="section">
-            <div class="section-title">Origin</div>
+            <div class="section-title">About</div>
             <dl class="info">
+              <dt>Model</dt><dd id="info-model">-</dd>
+              <dt>Core Version</dt><dd id="info-version">-</dd>
+              <dt>Serial Number</dt><dd id="info-serial">-</dd>
               <dt>Task</dt><dd id="st-task">-</dd>
               <dt>Free Disk Space</dt><dd id="st-disk">-</dd>
               <dt>Address</dt><dd id="st-host">-</dd>
               <dt>Download</dt><dd id="st-speed">-</dd>
+              <dt>Date</dt><dd id="st-date">-</dd>
+              <dt>Time</dt><dd id="st-time">-</dd>
+              <dt>Time Zone</dt><dd id="st-tz">-</dd>
+              <dt>Mobile App</dt><dd id="info-app">-</dd>
             </dl>
           </div>
           <div class="section">
-            <div class="section-title">Clock</div>
+            <div class="section-title">Software Updates</div>
+            <label class="check"><input name="autoupdates" form="origin-form" class="needs-conn" type="checkbox"> Update Automatically</label>
+            <label class="field">Update Channel<select name="channel" form="origin-form" class="needs-conn"></select></label>
             <dl class="info">
-              <dt>Date</dt><dd id="st-date">-</dd>
-              <dt>Time</dt><dd id="st-time">-</dd>
-              <dt>Timezone</dt><dd id="st-tz">-</dd>
+              <dt>Current Channel</dt><dd id="info-channel">-</dd>
+              <dt>Update Status</dt><dd id="info-update">-</dd>
             </dl>
+            <div class="grid2">
+              <button id="update-origin" class="btn-primary" disabled>No Updates Available</button>
+              <button id="check-updates">Check Again</button>
+              <button id="release-notes" class="needs-conn">[Show Notes...]</button>
+            </div>
+          </div>
+          <div class="section">
+            <div class="section-title">Power &amp; Maintenance</div>
+            <div class="grid2">
+              <button id="power-off" class="needs-conn">Power Off</button>
+              <button id="reboot" class="needs-conn">Reboot</button>
+              <button id="download-logs" class="needs-conn">Download Origin Logs</button>
+              <button id="save-app-log">Save Nightglass Log</button>
+              <button id="factory-reset" class="needs-conn btn-danger">Factory Reset</button>
+              <button id="demo-mode" class="needs-conn">Demo Mode Initialize</button>
+            </div>
+          </div>
+        </section>
+
+        <section id="cp-wifi" class="pane" role="tabpanel">
+          <h2 class="pane-heading">Wi-Fi</h2>
+          <div class="section">
+            <dl class="info">
+              <dt>Wi-Fi Mode</dt><dd id="wifi-mode">Disconnected</dd>
+              <dt>IP Address</dt><dd id="wifi-ip">—</dd>
+            </dl>
+          </div>
+          <div class="section">
+            <div class="section-title">Direct Connect</div>
+            <label class="check"><input id="wifi-force" type="checkbox" class="needs-conn" disabled> Force Direct Connect</label>
+            <label class="check" id="wifi-5ghz-row"><input id="wifi-5ghz" type="checkbox" class="needs-conn" disabled> Use 5 GHz Access Point</label>
+            <div class="grid2"><button id="wifi-dc-password" class="needs-conn" disabled>Set Direct Connect Password</button></div>
+          </div>
+          <div class="section">
+            <div class="section-title">Known Networks</div>
+            <ul id="wifi-known" class="netlist"><li class="empty">Disconnected</li></ul>
+            <div class="grid2"><button id="wifi-forget-all" class="needs-conn" disabled>Forget All Known Networks</button></div>
+          </div>
+          <div class="section">
+            <div class="section-title">Visible Networks</div>
+            <ul id="wifi-visible" class="netlist"><li class="empty">Disconnected</li></ul>
           </div>
         </section>
 
@@ -106,35 +212,30 @@
           <div class="section">
             <div class="section-title">Battery</div>
             <dl class="info">
-              <dt>Battery</dt><dd id="st-battery">-</dd>
+              <dt>Charge</dt><dd id="st-battery">-</dd>
+              <dt>Voltage</dt><dd id="st-voltage">-</dd>
+              <dt>Temperature</dt><dd id="st-btemp">-</dd>
               <dt>Charger</dt><dd id="st-charger">-</dd>
             </dl>
+          </div>
+          <div class="section">
+            <div class="section-title">LED Brightness</div>
+            <label class="ctl">LED Ring<input name="ledring" form="origin-form" class="needs-conn" type="range" min="0" max="100"><span data-val="ledring" data-pct></span></label>
+            <label class="ctl">Mount LED<input name="mountled" form="origin-form" class="needs-conn" type="range" min="0" max="100"><span data-val="mountled" data-pct></span></label>
           </div>
         </section>
 
         <section id="cp-mount" class="pane" role="tabpanel">
           <h2 class="pane-heading">Mount</h2>
           <div class="section">
-            <div class="section-title">Position</div>
-            <dl class="info">
-              <dt>RA (J2000)</dt><dd id="st-ra">-</dd>
-              <dt>Dec. (J2000)</dt><dd id="st-dec">-</dd>
-              <dt>Altitude</dt><dd id="st-alt">-</dd>
-              <dt>Azimuth</dt><dd id="st-az">-</dd>
-              <dt>Encoder Azimuth</dt><dd id="st-enc-az">-</dd>
-              <dt>Encoder Altitude</dt><dd id="st-enc-alt">-</dd>
-            </dl>
+            <div class="row">
+              <label class="check"><input name="wedge" form="origin-form" class="needs-conn" type="checkbox"> Using Equatorial Wedge</label>
+              <span class="grow"></span>
+              <button id="polar-align" class="needs-conn">Polar Align</button>
+            </div>
           </div>
           <div class="section">
-            <div class="section-title">Alignment</div>
-            <dl class="info">
-              <dt>Alignment</dt><dd id="st-aligned">-</dd>
-              <dt>Latitude</dt><dd id="st-lat">-</dd>
-              <dt>Longitude</dt><dd id="st-lon">-</dd>
-            </dl>
-          </div>
-          <div class="section">
-            <div class="section-title">Slew <small>(arrow keys)</small></div>
+            <div class="section-title">Motor Control <small>(arrow keys)</small></div>
             <div class="pad">
               <span></span><button class="needs-conn" data-alt="1" data-azm="0">▲</button><span></span>
               <button class="needs-conn" data-alt="0" data-azm="-1">◀</button>
@@ -142,10 +243,24 @@
               <button class="needs-conn" data-alt="0" data-azm="1">▶</button>
               <span></span><button class="needs-conn" data-alt="-1" data-azm="0">▼</button><span></span>
             </div>
-            <label class="field">Rate
-              <select id="rate"><option>1</option><option>2</option><option>3</option><option selected>4</option></select>
-            </label>
+            <!-- The web client's rate: the Origin's own rates 1–9 on a slider. -->
+            <div class="rate-row"><span>Rate</span>
+              <input id="rate" type="range" min="1" max="9" step="1" value="9"><span id="rate-val">9</span></div>
             <div class="row"><button id="halt" class="needs-conn btn-danger">Halt all tasks</button></div>
+          </div>
+          <div class="section">
+            <div class="section-title">Position and Alignment</div>
+            <dl class="info">
+              <dt>RA (J2000)</dt><dd id="st-ra">-</dd>
+              <dt>Dec. (J2000)</dt><dd id="st-dec">-</dd>
+              <dt>Altitude</dt><dd id="st-alt">-</dd>
+              <dt>Azimuth</dt><dd id="st-az">-</dd>
+              <dt>Encoder Azimuth</dt><dd id="st-enc-az">-</dd>
+              <dt>Encoder Altitude</dt><dd id="st-enc-alt">-</dd>
+              <dt>Alignment</dt><dd id="st-aligned">-</dd>
+              <dt>Latitude</dt><dd id="st-lat">-</dd>
+              <dt>Longitude</dt><dd id="st-lon">-</dd>
+            </dl>
           </div>
           <div class="section">
             <div class="section-title">StarSense Autoguider</div>
@@ -156,18 +271,116 @@
         <section id="cp-camera" class="pane" role="tabpanel">
           <h2 class="pane-heading">Camera</h2>
           <div class="section">
-            <div class="section-title">Capture</div>
-            <dl class="info"><dt>Camera</dt><dd id="st-camera">-</dd></dl>
+            <dl class="info">
+              <dt>Model</dt><dd id="cam-model">—</dd>
+              <dt>Serial Number</dt><dd id="cam-serial">—</dd>
+              <dt>Firmware</dt><dd id="cam-firmware">—</dd>
+              <dt>SDK Version</dt><dd id="cam-sdk">—</dd>
+              <dt>Image Size</dt><dd id="cam-size">—</dd>
+              <dt>Pixel Size</dt><dd id="cam-pixel">—</dd>
+            </dl>
+          </div>
+          <div class="section">
+            <div class="section-title">Camera Settings</div>
+            <!-- The live view: LiveStream on or off, automatic or manual
+                 (Nightglass's manual live view: Snapshot mode). -->
+            <div class="row">
+              <label class="check"><input id="cam-live" type="checkbox" class="needs-conn" disabled checked> LiveStream</label>
+              <span class="grow"></span>
+              <label class="check"><input name="cam-mode" type="radio" value="auto" class="needs-conn" disabled> Auto</label>
+              <label class="check"><input name="cam-mode" type="radio" value="manual" class="needs-conn" disabled> Manual</label>
+            </div>
+            <label class="ctl num">Exposure (s)<input id="cam-exp" type="range" min="0" max="1000" disabled><input id="cam-exp-val" disabled></label>
+            <label class="ctl num">ISO<input id="cam-iso" type="range" min="0" max="1000" disabled><input id="cam-iso-val" disabled></label>
+            <label class="field">Binning<select id="cam-bin" class="cam-idle" disabled><option value="1">1</option></select></label>
+            <label class="field">Bit Depth<select id="cam-depth" class="cam-idle" disabled>
+              <option value="8">RAW8</option><option value="16">RAW16</option><option value="24" class="rgb">RGB8</option><option value="48" class="rgb">RGB16</option>
+            </select></label>
+            <div id="cam-wb">
+              <label class="ctl">White Balance R<input id="cam-wb-r" data-wb="ColorRBalance" class="cam-idle" type="range" min="0" max="255" value="128" disabled><span>128</span></label>
+              <label class="ctl">White Balance G<input id="cam-wb-g" data-wb="ColorGBalance" class="cam-idle" type="range" min="0" max="255" value="128" disabled><span>128</span></label>
+              <label class="ctl">White Balance B<input id="cam-wb-b" data-wb="ColorBBalance" class="cam-idle" type="range" min="0" max="255" value="128" disabled><span>128</span></label>
+            </div>
+            <div class="row"><span class="ctl-label">ROI</span>
+              <button id="roi-select" class="cam-idle" disabled>Select ROI</button><button id="roi-clear">Clear ROI</button></div>
+            <dl class="info">
+              <dt>ROI Start</dt><dd id="roi-start">None</dd>
+              <dt>ROI Size</dt><dd id="roi-size">None</dd>
+              <dt>Temperature</dt><dd id="st-ctemp">-</dd>
+              <dt class="cool-row" hidden>Cooler</dt><dd class="cool-row" id="st-cooler" hidden>-</dd>
+            </dl>
+            <label class="field">Filter<select id="cam-filter" class="cam-idle" disabled><option>Clear</option><option>Nebula</option></select></label>
+          </div>
+          <!-- A cooled camera only (GetCameraInfo HasCooling, the Origin-585C-TEC). -->
+          <div id="cooling-section" class="section" hidden>
+            <div class="section-title">Camera Cooling</div>
+            <label class="check"><input name="cooling" form="origin-form" class="needs-conn" type="checkbox"> Cooler On</label>
+            <label class="field">Target Temperature (°C)<input name="coolingtarget" form="origin-form" class="needs-conn" type="number" min="-30" max="30" step="1"></label>
+          </div>
+          <div class="section">
+            <div class="section-title">Image and Video Capture</div>
+            <div class="grid2"><button id="capture-single" class="needs-conn btn-primary" disabled>Capture Single Image</button></div>
+            <label class="check"><input id="cam-calibrate" type="checkbox" checked> Calibrate with Darks and Flats</label>
+            <div class="grid2"><button id="start-stacking" class="needs-conn btn-primary" disabled>Start Stacking…</button></div>
+            <label class="field">Video Format<select id="video-container"><option value="ser">SER</option><option value="avi">AVI</option></select></label>
+            <label class="field">Video Bit Depth<select id="video-depth"><option value="8">8</option><option value="16">16</option></select></label>
+            <div class="row"><label class="check"><input id="video-max" type="checkbox"> Max Video Frames</label>
+              <input id="video-frames" type="number" min="1" max="9999" value="1000" size="5"></div>
+            <div class="grid2"><button id="capture-video" class="needs-conn" disabled title="For exposures under 0.1 s">Capture Video</button></div>
+          </div>
+          <div class="section">
+            <div class="section-title">Calibration</div>
+            <label class="check"><input name="giotto" form="origin-form" class="needs-conn" type="checkbox"> GIOTTO Flat Generator</label>
+            <label class="ctl">Giotto Brightness<input name="giottolevel" form="origin-form" class="needs-conn" type="range" min="1" max="100"><span data-val="giottolevel"></span></label>
+            <label class="field">Dark Frame ISO<select name="darkiso" form="origin-form"></select></label>
+            <label class="field">Dark Frame Exposure (s)<input name="darkexp" form="origin-form" type="number" step="any" min="0"></label>
+            <label class="field">Number Of Exposures<input name="darkcount" form="origin-form" type="number" step="1" min="1" max="100"></label>
+            <div class="grid2">
+              <button id="capture-darks" class="needs-conn">Capture Dark Frames</button>
+              <button id="recapture-darks" class="needs-conn">Recapture Complete Set of Dark Frames</button>
+              <button id="capture-flats" class="needs-conn">Capture Flat Frames</button>
+              <button id="restore-darks" class="needs-conn">Restore Factory Darks</button>
+              <button id="restore-flats" class="needs-conn">Restore Factory Flats</button>
+            </div>
+          </div>
+          <div class="section">
+            <div class="section-title">Images</div>
+            <label class="check"><input name="postprocess" form="origin-form" type="checkbox"> AI Post Process</label>
+            <label class="check"><input name="autocrop" form="origin-form" type="checkbox"> Auto-Crop Images</label>
+            <!-- The Origin's own setting (ImageServer/SetFsmFormat); JPEG 2000 shows only when set elsewhere. -->
+            <label class="field">Final Image Format<select name="finalformat" form="origin-form" class="needs-conn">
+              <option value="tif">TIFF</option><option value="png">PNG</option>
+              <option value="jp2" disabled>JPEG 2000 (not shown by Nightglass)</option>
+            </select></label>
+          </div>
+        </section>
+
+        <section id="cp-optics" class="pane" role="tabpanel">
+          <h2 class="pane-heading">Optics</h2>
+          <div class="section">
+            <label class="field">Model<select id="optics-model" class="needs-conn" disabled></select></label>
+            <label class="field">Design<select id="optics-design" disabled>
+              <option value="REFR">Refractor</option><option value="NEWT">Newtonian</option><option value="SCT">Schmidt-Cassegrain</option>
+              <option value="MAK">Maksutov-Cassegrain</option><option value="RASA">Rowe-Ackermann Schmidt Astrograph</option>
+            </select></label>
+            <label class="field">Focal Length (mm)<input id="optics-focal" type="number" min="100" max="5000" step="any" disabled></label>
+            <label class="field">Aperture (mm)<input id="optics-aperture" type="number" min="50" max="500" step="any" disabled></label>
+            <label class="field">Reducer<select id="optics-reducer" class="needs-conn" disabled>
+              <option value="1">None</option><option value="0.2">0.2x Hyperstar</option><option value="0.63">0.63x Reducer</option>
+              <option value="0.7">0.7x Reducer</option><option value="2">2.0x Barlow</option><option value="2.5">2.5x Barlow</option>
+              <option value="custom">Custom</option>
+            </select></label>
+            <label class="field">Reducer Ratio<input id="optics-ratio" type="number" min="0.2" max="3" step="0.01" disabled></label>
+            <div class="grid2"><button id="optics-apply" class="needs-conn btn-primary" disabled>Change Optical Configuration</button></div>
           </div>
         </section>
 
         <section id="cp-focuser" class="pane" role="tabpanel">
           <h2 class="pane-heading">Focuser</h2>
           <div class="section">
-            <div class="section-title"><span id="focus-label">Focuser Position</span></div>
-            <dl class="info"><dt>Position</dt><dd id="st-focus">-</dd></dl>
+            <dl class="info"><dt><span id="focus-label">Focuser Position</span></dt><dd id="st-focus">-</dd></dl>
             <p><button id="focus-value" class="needs-conn focus-ctl value-btn" title="Set the focuser position">–</button></p>
-            <div class="row">
+            <div class="steps">
               <button class="needs-conn focus-ctl" data-step="-2">−100</button>
               <button class="needs-conn focus-ctl" data-step="-1">−10</button>
               <button class="needs-conn focus-ctl" data-step="-3" title="One step (- key; Shift: rough)">−1</button>
@@ -176,26 +389,42 @@
               <button class="needs-conn focus-ctl" data-step="2">+100</button>
             </div>
             <!-- Hold to run the focuser (Focuser/Move, Celestron's web app's Move In/Out). -->
-            <div class="row">
-              <button class="needs-conn focus-ctl" data-jog="2" title="Hold to move the focuser in">Hold: In</button>
-              <button class="needs-conn focus-ctl" data-jog="-2" title="Hold to move the focuser out">Hold: Out</button>
+            <div class="grid2">
+              <button class="needs-conn focus-ctl" data-jog="2" title="Hold to move the focuser in">Move In</button>
+              <button class="needs-conn focus-ctl" data-jog="-2" title="Hold to move the focuser out">Move Out</button>
             </div>
           </div>
           <div class="section">
             <div class="section-title">Autofocus</div>
-            <div class="row"><button class="needs-conn focus-ctl btn-primary" id="autofocus">Auto</button></div>
+            <div class="row"><button class="needs-conn focus-ctl btn-primary" id="autofocus">Infinity Autofocus</button></div>
+            <label class="check"><input name="gotoaf" form="origin-form" class="needs-conn" type="checkbox"> Autofocus After Goto Any Object</label>
+            <label class="check"><input name="tempaf" form="origin-form" class="needs-conn" type="checkbox"> Autofocus On Temperature Change</label>
+            <label class="ctl">Change After<input name="threshold" form="origin-form" class="needs-conn" type="range" min="1" max="10"><span id="threshold-label"></span></label>
           </div>
         </section>
 
         <section id="cp-environment" class="pane" role="tabpanel">
           <h2 class="pane-heading">Environment</h2>
           <div class="section">
-            <div class="section-title">Sensors</div>
-            <dl class="info"><dt>Weather</dt><dd id="st-env">-</dd></dl>
+            <dl class="info"><dt>CPU Temp</dt><dd id="st-cputemp">-</dd></dl>
+            <label class="check"><input name="cpufan" form="origin-form" class="needs-conn" type="checkbox"> CPU Fan</label>
           </div>
           <div class="section">
             <div class="section-title">Dew Heater</div>
-            <dl class="info"><dt>Dew heater</dt><dd id="st-dew">-</dd></dl>
+            <dl class="info">
+              <dt>Ambient Temp</dt><dd id="st-ambient">-</dd>
+              <dt>Dewpoint</dt><dd id="st-dewpoint">-</dd>
+              <dt>Humidity</dt><dd id="st-humidity">-</dd>
+              <dt>OTA Temp</dt><dd id="st-otatemp">-</dd>
+              <dt>Heater</dt><dd id="st-dew">-</dd>
+            </dl>
+            <label class="check"><input name="otafan" form="origin-form" class="needs-conn" type="checkbox"> OTA Fan</label>
+            <div class="row"><span class="ctl-label">Heater Mode</span>
+              <label class="check"><input name="dewmode" form="origin-form" class="needs-conn" type="radio" value="Auto"> Auto</label>
+              <label class="check"><input name="dewmode" form="origin-form" class="needs-conn" type="radio" value="Manual"> Manual</label></div>
+            <label class="ctl">Aggression<input name="aggression" form="origin-form" class="needs-conn" type="range" min="1" max="10"><span data-val="aggression"></span></label>
+            <label class="ctl">Power<input name="dewpower" form="origin-form" class="needs-conn" type="range" min="0" max="100"><span data-val="dewpower" data-pct></span></label>
+            <div class="grid2"><button id="recalibrate" class="needs-conn">Recalibrate Environment Sensor</button></div>
           </div>
         </section>
       </div>
@@ -203,8 +432,15 @@
 
     <div id="main-panel">
       <nav id="main-tabs" class="tabstrip" role="tablist" aria-label="Views">
-        <button class="tab active" role="tab" data-pane="mp-targets">Targets</button>
+        <button class="tab active" role="tab" data-pane="mp-planetarium">Planetarium</button>
+        <button class="tab" role="tab" data-pane="mp-targets">Targets</button>
         <button class="tab" role="tab" data-pane="mp-liveview">Live View</button>
+        <!-- As the web client's Final Image, File Manager, Schedules and Mosaics
+             tabs; each opens its view as the old dialog's button did. -->
+        <button class="tab" role="tab" data-pane="mp-gallery">Final Image</button>
+        <button class="tab" role="tab" data-pane="mp-files" data-open="#open-files">File Manager</button>
+        <button class="tab" role="tab" data-pane="mp-schedules" data-open="#open-schedules">Schedules</button>
+        <button class="tab" role="tab" data-pane="mp-mosaics" data-open="#open-mosaics">Mosaics</button>
       </nav>
       <div id="main-content">
         <section id="mp-liveview" class="pane" role="tabpanel">
@@ -215,28 +451,164 @@
               <button id="center-here" class="btn-primary" hidden>Center Here</button>
               <button id="snapshot-save" hidden>Save</button>
               <button id="snapshot-delete" class="btn-danger" hidden>Delete</button>
-              <span class="grow"></span>
+              <p id="frame-info" class="grow"></p>
               <button id="save-shown" disabled>Save frame</button>
               <button id="save-final" disabled>Save final image again</button>
             </div>
             <div class="frame-box">
               <img id="frame" alt="">
               <div id="crosshair" hidden></div>
+              <div id="roi-box" hidden></div>
               <p id="frame-empty">No image yet</p>
               <!-- The app's progress box over the final image (updateFinalMasterHUDPhase). -->
               <p id="final-box" hidden></p>
             </div>
+            <!-- The web client's strip under the image: zoom, the pixel under the
+                 pointer, the frame's statistics; then the Origin's stretch. -->
             <div class="lv-controls">
-              <p id="frame-info"></p>
-              <label><span id="strength-label">Strength (0.50)</span>
+              <span class="lv-zoom"><button id="zoom-out" title="Zoom out">−</button>
+                <span id="zoom-label">1×</span><button id="zoom-in" title="Zoom in">+</button></span>
+              <span class="lv-sep"></span>
+              <span class="lv-field">X: <b id="px-x">—</b></span>
+              <span class="lv-field">Y: <b id="px-y">—</b></span>
+              <span class="lv-field">R: <b id="px-r">—</b></span>
+              <span class="lv-field">G: <b id="px-g">—</b></span>
+              <span class="lv-field">B: <b id="px-b">—</b></span>
+              <span class="lv-sep"></span>
+              <span class="lv-field">Size: <b id="st-size">—</b></span>
+              <span class="lv-field">Type: <b id="st-type">—</b></span>
+              <span class="lv-field">Min: <b id="st-min">—</b></span>
+              <span class="lv-field">Max: <b id="st-max">—</b></span>
+              <span class="lv-field">Mean: <b id="st-mean">—</b></span>
+              <span class="lv-field">Stdev: <b id="st-std">—</b></span>
+              <span class="lv-sep"></span>
+              <label class="lv-field"><span id="strength-label">Strength (0.50)</span>
                 <input id="stretch-strength" type="range" disabled min="0" max="100" value="50"></label>
-              <label><span id="background-label">Background (0.50)</span>
+              <label class="lv-field"><span id="background-label">Background (0.50)</span>
                 <input id="stretch-background" type="range" disabled min="0" max="100" value="50"></label>
             </div>
           </div>
         </section>
 
-        <section id="mp-targets" class="pane active" role="tabpanel">
+        <section id="mp-gallery" class="pane view-pane" role="tabpanel">
+          <!-- The web client's Final Image: the last final image, stretched
+               here on the computer (the Origin's stretch is unchanged). -->
+          <div id="final-viewer">
+            <div class="toolbar">
+              <p id="final-info" class="grow"></p>
+              <button id="final-save" disabled>Save final image again</button>
+              <button id="open-saved">Saved Images</button>
+            </div>
+            <div class="frame-box" id="final-view-box">
+              <img id="final-frame" alt="" hidden>
+              <p id="final-empty">Final stacked master images will appear here. Start stacking in the Camera tab to make one.</p>
+            </div>
+            <div class="lv-controls">
+              <span class="lv-zoom"><button id="fz-out" title="Zoom out">−</button>
+                <span id="fz-label">1×</span><button id="fz-in" title="Zoom in">+</button></span>
+              <span class="lv-sep"></span>
+              <span class="lv-field">X: <b id="fpx-x">—</b></span>
+              <span class="lv-field">Y: <b id="fpx-y">—</b></span>
+              <span class="lv-field">R: <b id="fpx-r">—</b></span>
+              <span class="lv-field">G: <b id="fpx-g">—</b></span>
+              <span class="lv-field">B: <b id="fpx-b">—</b></span>
+              <span class="lv-sep"></span>
+              <label class="lv-field">Strength: <input id="final-strength" type="range" min="0" max="100" value="90" disabled><b id="final-strength-val">0.90</b></label>
+              <label class="lv-field">Background: <input id="final-background" type="range" min="0" max="100" value="43" disabled><b id="final-background-val">0.035</b></label>
+              <label class="lv-field">De-noise: <input id="final-denoise" type="range" min="0" max="9" value="0" disabled><b id="final-denoise-val">Off</b></label>
+            </div>
+          </div>
+          <dialog id="gallery-dialog">
+            <h2>Image Gallery</h2>
+            <nav class="tabs">
+              <button id="gallery-all" class="tab on">All</button>
+              <button id="gallery-favorites" class="tab">Favorites</button>
+              <button id="gallery-recent" class="tab">Recent</button>
+              <span class="grow"></span>
+              <span id="gallery-count"></span>
+              <button id="gallery-select">Select</button>
+              <button id="gallery-share-sel" hidden>Share</button>
+              <button id="gallery-delete-sel" hidden>Delete</button>
+            </nav>
+            <div id="gallery-grid"></div>
+            <p id="gallery-empty" hidden>No images saved yet.</p>
+            <p><button class="close back">Back to Final Image</button></p>
+          </dialog>
+        </section>
+
+        <section id="mp-files" class="pane view-pane" role="tabpanel">
+          <dialog id="files-dialog">
+            <!-- The web client's section bar: its title, then the section's actions. -->
+            <div class="view-bar">
+              <h2>Astrophotography</h2><span class="grow"></span>
+              <button id="files-refresh">Refresh</button>
+              <button id="files-copy-all">Copy All To USB</button>
+              <button id="files-delete-all">Delete All Image Directories</button>
+            </div>
+            <p class="view-note">Status: <span id="files-status"></span> · Free Disk Space: <span id="files-free"></span></p>
+            <ul id="files-list"></ul>
+            <p><button class="close">Close</button></p>
+          </dialog>
+        </section>
+
+        <section id="mp-schedules" class="pane view-pane" role="tabpanel">
+          <dialog id="schedules-dialog">
+            <div class="view-bar">
+              <button id="sched-run" class="btn-primary" disabled>Run Tonight's Schedule Now</button>
+              <label class="check"><input id="sched-autofocus" type="checkbox"> Autofocus After Goto</label>
+              <label class="check"><input id="sched-saveraw" type="checkbox"> Save Raw Images</label>
+              <label class="check"><input id="sched-powerdown" type="checkbox"> Power Down After Completion</label>
+            </div>
+            <div class="view-bar"><h2>Tonight's Schedule</h2><span class="grow"></span><button id="sched-sort">Sort by Visibility</button></div>
+            <div id="sched-table"></div>
+            <p id="sched-empty" class="view-note">No objects scheduled for imaging tonight. To add one, select an object in Targets, then click Schedule in the Target tab.</p>
+            <div class="view-bar"><h2>Previous Schedules</h2></div>
+            <ul id="sched-previous"></ul>
+            <p id="sched-previous-empty" class="view-note">No previous schedules.</p>
+            <p><button class="close">Close</button></p>
+          </dialog>
+          <dialog id="tonight-dialog">
+            <h2>Tonight</h2>
+            <h3>Sun</h3>
+            <dl id="tonight-sun" class="info"></dl>
+            <h3 id="tonight-moon-phase">Moon</h3>
+            <p id="tonight-moon-text"></p>
+            <dl id="tonight-moon" class="info"></dl>
+            <p><button class="close">Close</button></p>
+          </dialog>
+        </section>
+
+        <section id="mp-mosaics" class="pane view-pane" role="tabpanel">
+          <dialog id="mosaics-dialog">
+            <h2>Mosaic Capture Sets</h2>
+            <ul id="mosaics-list"></ul>
+            <p id="mosaics-empty" hidden>No Mosaics</p>
+            <h2>Composition</h2>
+            <label class="check"><input name="mosaicflatten" form="origin-form" type="checkbox"> Flatten Backgrounds</label>
+            <label class="check"><input name="mosaicnormalize" form="origin-form" type="checkbox"> Normalize Backgrounds</label>
+            <label class="check"><input name="mosaicequalize" form="origin-form" type="checkbox"> Equalize Noise</label>
+            <p><button class="close">Close</button></p>
+          </dialog>
+        </section>
+
+        <!-- The web client's Planetarium: the sky above the observer. -->
+        <section id="mp-planetarium" class="pane active" role="tabpanel">
+          <div id="sky-box"><canvas id="sky"></canvas>
+            <p id="sky-empty" hidden>Set your location in Settings to see the sky.</p></div>
+          <div class="lv-controls" id="sky-nav">
+            <span class="lv-zoom"><button id="sky-out" title="Zoom out">−</button>
+              <span id="sky-fov">180° × 180°</span><button id="sky-in" title="Zoom in">+</button></span>
+            <span class="lv-sep"></span>
+            <span class="lv-field">Target: <b id="sky-target">None</b></span>
+            <span class="grow"></span>
+            <button id="sky-center-target" disabled>Center Target</button>
+            <button id="sky-center-telescope" disabled>Center Telescope</button>
+            <button id="sky-goto" class="btn-primary" disabled>Goto Target</button>
+            <button id="sky-mosaic" disabled>Capture Mosaic</button>
+          </div>
+        </section>
+
+        <section id="mp-targets" class="pane" role="tabpanel">
           <div id="targets">
             <div class="toolbar">
               <select id="catalog"></select>
@@ -341,103 +713,29 @@
     <p><button id="focus-set">OK</button> <button class="close">Cancel</button></p>
   </dialog>
 
-  <dialog id="files-dialog">
-    <h2>Origin Telescope File Manager</h2>
-    <p>Below you will find a listing of image directories found on your Origin Telescope.</p>
-    <p>Status: <span id="files-status"></span> · Free Disk Space: <span id="files-free"></span>
-      <button id="files-refresh">Refresh</button></p>
-    <ul id="files-list"></ul>
-    <p><button id="files-copy-all">Copy All To USB</button> <button id="files-delete-all">Delete All Image Directories</button>
-      <button class="close">Close</button></p>
+
+  <form id="origin-form" onsubmit="return false"></form>
+
+  <dialog id="stack-dialog">
+    <h2>Start Stacking</h2>
+    <form id="stack-form" method="dialog">
+      <label class="check"><input name="mode" type="radio" value="auto"> Automatic Exposure</label>
+      <label class="check"><input name="mode" type="radio" value="manual"> Manual Exposure</label>
+      <label>Exposure (s) <span id="stack-exp-val"></span><input id="stack-exp" type="range" min="0" max="1000"></label>
+      <label>ISO <span id="stack-iso-val"></span><input id="stack-iso" type="range" min="0" max="1000"></label>
+      <label class="check"><input name="saveraw" type="checkbox"> Save Raw Images</label>
+      <label class="check"><input name="ignorefail" type="checkbox"> Ignore Stacking Failures</label>
+      <p><button value="cancel">Cancel</button> <button value="start" class="btn-primary">Start Stacking</button></p>
+    </form>
   </dialog>
 
-  <dialog id="origin-dialog">
-    <h2>Origin Settings</h2>
-    <form id="origin-form" onsubmit="return false">
-      <fieldset><legend>Mount</legend>
-        <label class="check"><input name="wedge" type="checkbox"> Using Equatorial Wedge</label>
-        <button id="reinit" type="button">Re-Initialize Telescope Now</button>
-        <button id="polar-align" type="button">Polar Align Telescope Now</button>
-        <button id="reboot" type="button">Reboot</button>
-        <button id="power-off" type="button">Power Off</button>
-      </fieldset>
-      <fieldset><legend>Lighting</legend>
-        <label>LED Ring<input name="ledring" type="range" min="0" max="100"> <span data-val="ledring" data-pct></span></label>
-        <label>Mount LED<input name="mountled" type="range" min="0" max="100"> <span data-val="mountled" data-pct></span></label>
-      </fieldset>
-      <fieldset><legend>Fans</legend>
-        <label class="check"><input name="otafan" type="checkbox"> Telescope Fan</label>
-        <label class="check"><input name="cpufan" type="checkbox"> CPU Fan</label>
-      </fieldset>
-      <fieldset><legend>Autofocus</legend>
-        <label class="check"><input name="tempaf" type="checkbox"> On Temperature Change</label>
-        <label>Change After <span id="threshold-label"></span><input name="threshold" type="range" min="1" max="10"></label>
-        <label class="check"><input name="gotoaf" type="checkbox"> After Goto Any Object</label>
-      </fieldset>
-      <fieldset><legend>Dew Heater</legend>
-        <label class="check"><input name="dewmode" type="radio" value="Auto"> Auto</label>
-        <label class="check"><input name="dewmode" type="radio" value="Manual"> Manual</label>
-        <label>Aggressiveness<input name="aggression" type="range" min="1" max="10"> <span data-val="aggression"></span></label>
-        <label>Power<input name="dewpower" type="range" min="0" max="100"> <span data-val="dewpower" data-pct></span></label>
-      </fieldset>
-      <fieldset><legend>Camera And Imaging</legend>
-        <label class="check"><input name="giotto" type="checkbox"> GIOTTO Flat Generator</label>
-        <label>Giotto Brightness<input name="giottolevel" type="range" min="1" max="100"> <span data-val="giottolevel"></span></label>
-        <button id="capture-flats" type="button">Capture Flat Frames</button>
-        <button id="restore-darks" type="button">Restore Factory Darks</button>
-        <button id="restore-flats" type="button">Restore Factory Flats</button>
-        <label>Dark Frame ISO<select name="darkiso"></select></label>
-        <label>Dark Frame Exposure (s)<input name="darkexp" type="number" step="any" min="0"></label>
-        <label>Number Of Exposures<input name="darkcount" type="number" step="1" min="1" max="100"></label>
-        <button id="capture-darks" type="button">Capture Dark Frames</button>
-        <button id="recapture-darks" type="button">Recapture Complete Set of Dark Frames</button>
-      </fieldset>
-      <fieldset><legend>Environment</legend>
-        <button id="recalibrate" type="button">Recalibrate Environment Sensor</button>
-      </fieldset>
-      <!-- A cooled camera only (GetCameraInfo HasCooling, the Origin-585C-TEC). -->
-      <fieldset id="cooling-section" hidden><legend>Camera Cooling</legend>
-        <label class="check"><input name="cooling" type="checkbox"> Cooler On</label>
-        <label>Target Temperature (°C)<input name="coolingtarget" type="number" min="-30" max="30" step="1"></label>
-      </fieldset>
-      <fieldset><legend>Images</legend>
-        <label class="check"><input name="postprocess" type="checkbox"> AI Post Process</label>
-        <label class="check"><input name="autocrop" type="checkbox"> Auto-Crop Images</label>
-        <!-- The Origin's own setting (ImageServer/SetFsmFormat); JPEG 2000 shows only when set elsewhere. -->
-        <label>Final Image Format<select name="finalformat">
-          <option value="tif">TIFF</option><option value="png">PNG</option>
-          <option value="jp2" disabled>JPEG 2000 (not shown by Nightglass)</option>
-        </select></label>
-      </fieldset>
-      <fieldset><legend>Mosaics</legend>
-        <label class="check"><input name="mosaicflatten" type="checkbox"> Flatten Backgrounds</label>
-        <label class="check"><input name="mosaicnormalize" type="checkbox"> Normalize Backgrounds</label>
-        <label class="check"><input name="mosaicequalize" type="checkbox"> Equalize Noise</label>
-      </fieldset>
-      <fieldset><legend>Logging</legend>
-        <button id="download-logs" type="button">Download Origin Logs</button>
-        <button id="save-app-log" type="button">Save Nightglass Log</button>
-      </fieldset>
-      <fieldset><legend>Version &amp; Updates</legend>
-        <dl class="info">
-          <dt>Model</dt><dd id="info-model"></dd>
-          <dt>Current Version</dt><dd id="info-version"></dd>
-          <dt>Serial Number</dt><dd id="info-serial"></dd>
-          <dt>Update Channel</dt><dd id="info-channel"></dd>
-          <dt>Update Status</dt><dd id="info-update"></dd>
-          <dt>Release Notes</dt><dd><button id="release-notes" type="button">[Show Notes...]</button></dd>
-          <dt>Mobile App</dt><dd id="info-app"></dd>
-        </dl>
-        <!-- The app's pull to refresh (updateSoftwareUpdateInfoFromScope). -->
-        <button id="check-updates" type="button">Check Again</button>
-        <label class="check"><input name="autoupdates" type="checkbox"> Update Automatically</label>
-        <label>Core Software Channel<select name="channel"></select></label>
-        <button id="update-origin" type="button" disabled>No Updates Available</button>
-      </fieldset>
-      <fieldset><legend>Experimental</legend>
-        <button id="demo-mode" type="button">Demo Mode Initialize</button>
-      </fieldset>
-      <p><button class="close" type="button">Close</button></p>
+  <!-- A text the app asks for (Wi-Fi passphrases). -->
+  <dialog id="prompt-dialog">
+    <h2 id="prompt-title"></h2>
+    <form id="prompt-form" method="dialog">
+      <p id="prompt-text"></p>
+      <input id="prompt-input" type="password" autocomplete="off">
+      <p><button value="cancel" formnovalidate>Cancel</button> <button id="prompt-ok" value="ok" class="btn-primary"></button></p>
     </form>
   </dialog>
 
@@ -505,12 +803,6 @@
     </form>
   </dialog>
 
-  <dialog id="mosaics-dialog">
-    <h2>Mosaic Capture Sets</h2>
-    <ul id="mosaics-list"></ul>
-    <p id="mosaics-empty" hidden>No Mosaics</p>
-    <p><button class="close">Close</button></p>
-  </dialog>
 
   <dialog id="mosaic-capture-dialog">
     <h2 id="mc-title">Mosaic Capture</h2>
@@ -532,22 +824,6 @@
     <p><button id="qs-back">Back</button> <button id="qs-next">Next</button> <button class="close">Done</button></p>
   </dialog>
 
-  <dialog id="gallery-dialog">
-    <h2>Image Gallery</h2>
-    <nav class="tabs">
-      <button id="gallery-all" class="tab on">All</button>
-      <button id="gallery-favorites" class="tab">Favorites</button>
-      <button id="gallery-recent" class="tab">Recent</button>
-      <span class="grow"></span>
-      <span id="gallery-count"></span>
-      <button id="gallery-select">Select</button>
-      <button id="gallery-share-sel" hidden>Share</button>
-      <button id="gallery-delete-sel" hidden>Delete</button>
-    </nav>
-    <div id="gallery-grid"></div>
-    <p id="gallery-empty" hidden>No images saved yet.</p>
-    <p><button class="close">Close</button></p>
-  </dialog>
 
   <dialog id="share-dialog">
     <h2>Share Image</h2>
@@ -570,15 +846,6 @@
   </dialog>
 
   <!-- The app's Tonight → Sun & Moon card (TonightAtAGlanceFragment). -->
-  <dialog id="tonight-dialog">
-    <h2>Tonight</h2>
-    <h3>Sun</h3>
-    <dl id="tonight-sun" class="info"></dl>
-    <h3 id="tonight-moon-phase">Moon</h3>
-    <p id="tonight-moon-text"></p>
-    <dl id="tonight-moon" class="info"></dl>
-    <p><button class="close">Close</button></p>
-  </dialog>
 
   <!-- The image info's Change Target… (ImageMetaDataFragment). -->
   <dialog id="target-pick-dialog">

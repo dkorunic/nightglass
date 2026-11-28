@@ -4,7 +4,7 @@
 // Run: node --test app/frontend/targets.test.mjs
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { CROP_RATIOS, batteryTemp, cameraExtra, composeButton, mosaicAction, mosaicDetail, mosaicSize, shareExposure, tileKind, tileStatus, adjustPixels, batteryPercent, batteryText, cameraLocks, canCancel, canFinish, captureLabel, chargerText, cropRect, darkMessage, dewText, dms, envText, fileStatus, filterLabel, focusSteps, gotoMode, guiderText, isImagingState, key, latLon, offsetIn, polarText, prepare, rateSpeed, reframeText, serial, sexa, sliderEdit, stretchEnabled, stretchLabel, targetFor, updateButton, updateText, view, zoomAt , polarOffset, angle, clock, calendar, tonightRows } from "./targets.js";
+import { CROP_RATIOS, celsius, composeButton, mosaicAction, mosaicDetail, mosaicSize, shareExposure, tileKind, tileStatus, adjustPixels, batteryPercent, batteryText, cameraLocks, canCancel, canFinish, captureLabel, chargerText, cropRect, darkMessage, dewText, dms, fileStatus, filterLabel, focusSteps, gotoMode, guiderText, isImagingState, key, latLon, offsetIn, polarText, prepare, reframeText, serial, sexa, sliderEdit, stretchEnabled, stretchLabel, targetFor, updateButton, updateText, view, zoomAt , polarOffset, angle, clock, calendar, tonightRows, imageStats, wifiMode, wifiBars, wifiSecurity, exposureAt, exposurePos, isoAt, isoPos, exposureText, visibilityText, scheduleStarts, byVisibility, zoneClock, skyProject, skyScale, starRadius, starColor } from "./targets.js";
 
 test("sexa", () => {
   assert.equal(sexa("5 35 17"), 5 + 35 / 60 + 17 / 3600);
@@ -88,11 +88,6 @@ test("Finish needs an object or list run and a stacked image (finishImageCapture
   assert.ok(!canFinish("RECAPTURE_OBJECT", true));
 });
 
-test("Rate 1-4 is the native slew rate table 2, 4, 6, 9", () => {
-  assert.deepEqual([1, 2, 3, 4].map(rateSpeed), [2, 4, 6, 9]);
-  assert.equal(rateSpeed(0), 6); // unset: rate 3
-  assert.equal(rateSpeed(7), 6);
-});
 
 test("Focus steps: ±10/±100, ±100/±1000 in snapshot mode (FocusOptionsFragment)", () => {
   assert.deepEqual(focusSteps(false), [10, 100]);
@@ -180,24 +175,16 @@ test("zoomAt keeps the point under the cursor", () => {
 test("status screen dew and weather", () => {
   assert.equal(dewText({ Mode: "Auto", ManualPowerLevel: 0.5, HeaterLevel: 0.2 }), "Automatic, power –");
   assert.equal(dewText({ Mode: "Manual", ManualPowerLevel: 0.42 }), "Manual, power 42 %");
-  assert.equal(envText({ AmbientTemperature: 12.5, Humidity: 61, DewPoint: 5.234 }), "12.50 °C, 61%, dew point 5.23 °C");
-  // The telescope and CPU temperatures, when reported (as Celestron's web app shows them).
-  assert.equal(envText({ AmbientTemperature: 12.5, Humidity: 61, DewPoint: 5.234, FrontCellTemperature: 11.35, CpuTemperature: 42.84 }),
-    "12.50 °C, 61%, dew point 5.23 °C, telescope 11.35 °C, CPU 42.84 °C");
+  // The panes' temperature rows.
+  assert.equal(celsius(42.84), "42.8 °C");
+  assert.equal(celsius(-4.96), "-5.0 °C");
+  assert.equal(celsius(undefined), "–");
 });
 
 test("status extras from firmware 1.5.6286", () => {
   // The autoguider's last corrections.
   assert.equal(guiderText({ IsGuiding: true, RaError: 0.1, DecError: 0.2, RaCorrection: 0.31, DecCorrection: -0.05 }),
     "Guiding, RA err 0.10, Dec err 0.20, RA corr 0.31, Dec corr -0.05");
-  // The camera's temperature and a cooled camera's cooler power.
-  assert.equal(cameraExtra({}), "");
-  assert.equal(cameraExtra({ Temperature: -4.96, PowerLevel: 0.427 }), ", -5.0 °C, cooler 43%");
-  assert.equal(cameraExtra({ Temperature: 24.3 }), ", 24.3 °C");
-  // A battery temperature of 100 °C or more is no reading (as the web app).
-  assert.equal(batteryTemp(31.26), ", 31.3 °C");
-  assert.equal(batteryTemp(100), "");
-  assert.equal(batteryTemp(undefined), "");
 });
 
 // The same hand-worked values as Go's TestApplyEditLikeApp.
@@ -316,4 +303,80 @@ test("tonightRows", () => {
   const r = tonightRows({ ...c, SunSet: "", MoonRise: "06:14" }, "12h");
   assert.deepEqual(r.sun[0], ["Sunset:", "-"]); // the midnight sun
   assert.deepEqual(r.moon[0], ["Rises", "6:14 AM"]);
+});
+
+test("imageStats is over each pixel's luma", () => {
+  // Black, white, pure red (luma 76) and pure green (150).
+  const s = imageStats(new Uint8ClampedArray([0, 0, 0, 255, 255, 255, 255, 255, 255, 0, 0, 255, 0, 255, 0, 255]));
+  assert.deepEqual([s.min, s.max, s.mean], [0, 255, 120.25]);
+  assert.ok(Math.abs(s.stdev - Math.sqrt((120.25 ** 2 + 134.75 ** 2 + 44.25 ** 2 + 29.75 ** 2) / 4)) < 1e-9);
+  assert.equal(imageStats(new Uint8ClampedArray()), null);
+});
+
+test("Wi-Fi tab texts", () => {
+  assert.equal(wifiMode(4, true), "Network Client (Internet)");
+  assert.equal(wifiMode(5, 0), "Direct Connect (No Internet)");
+  assert.equal(wifiMode(2), "Initializing…");
+  assert.equal(wifiMode(-1), "Disconnected");
+  assert.deepEqual([-50, -60, -70, -90, 0].map(wifiBars), [4, 3, 2, 1, 0]);
+  assert.equal(wifiSecurity("INCOMPATIBLE"), "WPA3");
+  assert.equal(wifiSecurity("X"), "—");
+});
+
+test("camera log sliders", () => {
+  assert.equal(exposureAt(0), 0.001);
+  assert.equal(exposureAt(1000), 1000);
+  assert.equal(exposurePos(10), 667);
+  assert.equal(exposurePos(1e9), 1000);
+  const isos = [100, 200, 500, 1000, 2000, 5000, 10000, 20000];
+  assert.equal(isoAt(0, isos), 100);
+  assert.equal(isoAt(1000, isos), 20000);
+  assert.equal(isoAt(480, isos), 1000);
+  for (const v of isos) assert.equal(isoAt(isoPos(v, isos), isos), v);
+  assert.equal(exposureText(0.123456), "0.123");
+  assert.equal(exposureText(12.3456), "12.35");
+});
+
+test("schedule visibility, starts and order", () => {
+  const at = (h) => new Date(Date.UTC(2026, 10, 28, h)).toISOString();
+  const fmt = (s) => `${Number(zoneClock(s).slice(0, 2))}h`;
+  assert.equal(visibilityText({ Rise: at(18), Set: at(23) }, fmt), "Rises 18h / Sets 23h");
+  assert.equal(visibilityText({ Rise: "0001-01-01T00:00:00Z", Set: at(23) }, fmt), "Rises — / Sets 23h");
+  assert.equal(visibilityText({ Circumpolar: true }, fmt), "Does not set");
+  assert.equal(visibilityText({ NeverRises: true }, fmt), "Does Not Rise");
+  const now = Date.parse(at(17));
+  // Up now (set 20h), rising at 21h, never setting, up now (set 19h).
+  const vis = [{ Rise: at(10), Set: at(20) }, { Rise: at(21), Set: at(23) }, { Circumpolar: true }, { Rise: at(9), Set: at(19) }];
+  assert.deepEqual(byVisibility(vis, now), [3, 0, 1, 2]);
+  // 10 min, then one that waits for its rise at 21h, then 30 min after it.
+  const starts = scheduleStarts([{ DurationSec: 600 }, { DurationSec: 600 }, { DurationSec: 1800 }], vis.slice(0, 3), now);
+  assert.deepEqual(starts, [now, Date.parse(at(21)), Date.parse(at(21)) + 600000]);
+});
+
+test("zoneClock reads the observer's clock", () => {
+  assert.equal(zoneClock("2026-11-28T18:22:05+01:00"), "18:22");
+});
+
+test("planetarium projection", () => {
+  const v = { alt: 90, az: 180, scale: 100, cx: 500, cy: 400 };
+  // The zenith at the centre; north up, east left, the horizon at radius 2.
+  assert.deepEqual(skyProject(90, 0, v).map(Math.round), [500, 400]);
+  const [nx, ny] = skyProject(0, 0, v), [ex] = skyProject(0, 90, v);
+  assert.ok(Math.abs(nx - 500) < 1e-9 && Math.abs(ny - 200) < 1e-9, "north up");
+  assert.ok(Math.abs(ex - 300) < 1e-9, "east left");
+  // Facing south at the horizon: the antipode (north, below) is not drawn.
+  const s = { alt: 0, az: 180, scale: 100, cx: 0, cy: 0 };
+  assert.equal(skyProject(0, 0, s), null);
+  assert.ok(skyProject(0, 0, s, true));
+  // Clamped points lie far out in their own direction: below the zenith
+  // view's horizon (radius 2), never back near its centre.
+  for (const az of [0, 77, 200]) {
+    const [x, y] = skyProject(-89.9, az, v, true);
+    assert.ok(Math.hypot(x - 500, y - 400) > 900, `nadir at az ${az}`);
+  }
+  // A 180° field spans the width exactly.
+  const w = 800, sc = skyScale(180, w), [x0] = skyProject(0, 90, { alt: 0, az: 180, scale: sc, cx: w / 2, cy: 0 });
+  assert.ok(Math.abs(x0) < 1e-9);
+  assert.ok(starRadius(-1.5, 180) > starRadius(6, 180));
+  assert.equal(starColor(-0.3), "rgb(170,195,255)");
 });

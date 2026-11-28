@@ -14,8 +14,9 @@ import (
 	"time"
 )
 
-// SlewRates are the Origin app's four manual speeds (native table 2, 4, 6, 9).
-var SlewRates = []int{2, 4, 6, 9}
+// MaxSlewRate is the fastest of the Origin's manual rates, 1–9, which
+// Celestron's web client offers on a slider (the app offers 2, 4, 6 and 9).
+const MaxSlewRate = 9
 
 // Focuser travel (Origin.java ORIGIN_MIN/MAX_FOCUSER_POSITION).
 const (
@@ -73,13 +74,13 @@ func (c *Client) GotoRaDec(ctx context.Context, raDeg, decDeg float64) error {
 	return err
 }
 
-func validRate(r int) bool { return r == 0 || slices.Contains(SlewRates, max(r, -r)) }
+func validRate(r int) bool { return max(r, -r) <= MaxSlewRate }
 
-// Slew moves the mount at a signed SlewRates speed per axis (0 stops that
+// Slew moves the mount at a signed rate, 1–MaxSlewRate, per axis (0 stops that
 // axis): positive altRate is up, positive azmRate is azimuth increasing.
 func (c *Client) Slew(ctx context.Context, altRate, azmRate int) error {
 	if !validRate(altRate) || !validRate(azmRate) {
-		return fmt.Errorf("origin: slew rates %d, %d: want 0 or ±%v", altRate, azmRate, SlewRates)
+		return fmt.Errorf("origin: slew rates %d, %d: want 0 to ±%d", altRate, azmRate, MaxSlewRate)
 	}
 	if (altRate != 0 || azmRate != 0) && c.Imaging() {
 		return ErrImaging // a stop always goes out

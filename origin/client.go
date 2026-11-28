@@ -87,6 +87,9 @@ var StatusQueries = [][2]string{
 	{"Environment", "GetSensors"},
 	{"LedRing", "GetBrightnessLevel"},
 	{"Focuser", "GetFocuserAdvancedSettings"},
+	// Asked by Celestron's web client on connecting: its Camera and Wi-Fi tabs.
+	{"LiveStream", "GetDisableLiveStream"},
+	{"Network", "GetStatus"},
 	// Not Optics: an Origin's optics are fixed (RASA 6) and it answers every
 	// Optics command with an error (Celestron's web app, firmware 1.5.6286).
 }

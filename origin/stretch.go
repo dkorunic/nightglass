@@ -4,7 +4,13 @@
 package origin
 
 import (
+	"bytes"
+	"errors"
+	"fmt"
 	"image"
+	"image/draw"
+	"image/png"
+	"math"
 	"slices"
 )
 
@@ -133,4 +139,70 @@ func abs(x float64) float64 {
 	}
 
 	return x
+}
+
+// ErrShallow is an image of 8 bits per sample: nothing to stretch again.
+var ErrShallow = errors.New("an 8-bit image cannot be stretched again")
+
+// Restretch shows a master again with other stretch values and a de-noise
+// blur (0 off, else a Gaussian of radius n), as the Final Image tab of
+// Celestron's web client adjusts its view on the computer, not the Origin.
+// crop trims each side as DecodeCrop does.
+func Restretch(original []byte, strength, background float64, denoise, crop int) ([]byte, error) {
+	img, _, err := image.Decode(bytes.NewReader(original))
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrNotImage, err)
+	}
+	if !deep(img) {
+		return nil, ErrShallow
+	}
+	out := cropped(AutoStretch(img, strength, background), crop)
+	if denoise > 0 {
+		out = Blur(out, denoise)
+	}
+
+	return encodePNG(out, png.BestSpeed)
+}
+
+// Blur is a Gaussian blur of radius r (sigma r/2), applied as two passes.
+func Blur(src image.Image, r int) *image.NRGBA {
+	b := src.Bounds()
+	in := image.NewNRGBA(image.Rect(0, 0, b.Dx(), b.Dy()))
+	draw.Draw(in, in.Bounds(), src, b.Min, draw.Src)
+	sigma := float64(r) / 2
+	k := make([]float64, 2*r+1)
+	var sum float64
+	for i := range k {
+		x := float64(i - r)
+		k[i] = math.Exp(-x * x / (2 * sigma * sigma))
+		sum += k[i]
+	}
+	for i := range k {
+		k[i] /= sum
+	}
+	w, h := in.Rect.Dx(), in.Rect.Dy()
+	pass := func(dst, src *image.NRGBA, dx, dy int) {
+		for y := range h {
+			for x := range w {
+				var acc [4]float64
+				for i, kv := range k {
+					// Clamped at the edges.
+					sx, sy := min(max(x+(i-r)*dx, 0), w-1), min(max(y+(i-r)*dy, 0), h-1)
+					o := sy*src.Stride + sx*4
+					for c := range 4 {
+						acc[c] += kv * float64(src.Pix[o+c])
+					}
+				}
+				o := y*dst.Stride + x*4
+				for c := range 4 {
+					dst.Pix[o+c] = uint8(acc[c] + 0.5)
+				}
+			}
+		}
+	}
+	tmp := image.NewNRGBA(in.Rect)
+	pass(tmp, in, 1, 0)
+	pass(in, tmp, 0, 1)
+
+	return in
 }

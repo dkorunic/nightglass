@@ -3,18 +3,25 @@
 
 // Nightglass frontend. Every call goes to app/control.App through Wails.
 import { Browser, Events } from "/wails/runtime.js";
-import { sliderLabels, $, $$, act, call, choice, confirmBox, showAlert, showPane, toast } from "./ui.js";
+import { sliderLabels, $, $$, act, call, choice, confirmBox, showAlert, openInTab, showPane, toast } from "./ui.js";
 import {
   composeButton, mosaicAction, mosaicDetail, mosaicSize, tileStatus,
-  adjustPixels, angle, batteryPercent, batteryTemp, cameraExtra, calendar, clock, batteryText, cameraLocks, canCancel, canFinish, captureLabel, chargerText, cropRect, CROP_RATIOS, darkMessage, dewText, dms, envText, fileStatus, filterLabel, focusSteps, freeSpace, gotoMode, guiderText,
-  isImagingState, known, latLon, offsetIn, prepare, rateSpeed, reframeText, serial, stretchLabel, targetFor, updateButton, updateText, view,
+  adjustPixels, angle, batteryPercent, calendar, clock, batteryText, cameraLocks, canCancel, canFinish, captureLabel, chargerText, cropRect, CROP_RATIOS, darkMessage, dewText, dms, fileStatus, filterLabel, focusSteps, freeSpace, gotoMode, guiderText,
+  isImagingState, known, latLon, offsetIn, prepare, reframeText, serial, stretchLabel, targetFor, updateButton, updateText, view, imageStats, celsius, eventTime, zoneClock,
   sliderEdit, stretchEnabled, tonightRows, zoomAt,
 } from "./targets.js";
 import { loadFiles, updateFilesStatus } from "./files.js";
-import { originStatus, showCalibrationButtons, showLogsButton, showPolar, showUpdate } from "./origin.js";
+import { originConnected, originStatus, showPrefs, showCalibrationButtons, showLogsButton, showPolar, showUpdate } from "./origin.js";
 import { mosaicTaskStatus, renderMosaicCapture } from "./mosaics.js";
 import { showQuickStart } from "./quickstart.js";
 import { viewImage } from "./gallery.js"; // the gallery and editor register their own handlers
+// The web client's tabs the app has not; each registers its own handlers.
+import "./camera.js";
+import "./wifi.js";
+import "./optics.js";
+import "./schedules.js";
+import "./finalview.js";
+import "./planetarium.js";
 
 const ROW = 24; // px, matches --row in style.css
 const deg = (rad) => (rad * 180) / Math.PI;
@@ -42,6 +49,7 @@ function setConnected(c, host, error) {
   if (!c) { for (const k of Object.keys(frames)) delete frames[k]; show(); } // Go drops them with the link
   if (!c) { // the next link reports afresh (the app resets its state on disconnect)
     lastMount = {}; lastTask = {}; lastFocus = {}; lastFilter = undefined; lastDisk = {}; lastTransfer = null; lastUpdate = null;
+    lastOrigin = null;
     forced = "";
     updateRunButtons();
     if ($("#polar-dialog").open) $("#polar-dialog").close(); // PolarAlignFragment.telescopeConnectionClosed
@@ -57,6 +65,7 @@ Events.On("conn", async (ev) => {
   const { Connected, Host, Error } = ev.data;
   setConnected(Connected, Host, Error);
   if (Connected) for (const s of (await act("Status")) || []) applyStatus(s.Key, s.Fields);
+  if (Connected) originConnected(); // the Origin's settings in the panes
   if (Connected && $("#files-dialog").open) loadFiles(); // reloaded on reconnect
 });
 
@@ -150,7 +159,6 @@ $$("dialog .close").forEach((b) => (b.onclick = () => b.closest("dialog").close(
 
 // ---------- status ----------
 
-const camera = { params: "–", mode: "" };
 export let lastMount = {}, lastTask = {}, lastFocus = {}, lastFilter, lastDisk = {}, lastTransfer = null, lastUpdate = null;
 export let lastOrigin = null; // the Origin settings last shown
 let focusLimits = { Min: 1000, Max: 35000 }; // the app's defaults until GetPositionLimits
@@ -196,7 +204,10 @@ function applyStatus(k, f) {
       set("#st-az", angle(f.Azm, false, true, settings.CoordFormat));
       {
         const pct = batteryPercent(f.BatteryVoltage); // an estimate from the voltage
-        set("#st-battery", `${batteryText(f.BatteryLevel)}${f.BatteryVoltage ? `, ${f.BatteryVoltage.toFixed(1)} V` : ""}${pct != null ? ` (~${pct}%)` : ""}${batteryTemp(f.BatteryTemperature)}`);
+        set("#st-battery", `${batteryText(f.BatteryLevel)}${pct != null ? ` (~${pct}%)` : ""}`);
+        set("#st-voltage", f.BatteryVoltage ? `${f.BatteryVoltage.toFixed(1)} V` : "–");
+        // The web client takes 100 °C and above as no reading.
+        set("#st-btemp", celsius(f.BatteryTemperature < 100 ? f.BatteryTemperature : null));
       }
       set("#st-charger", chargerText(f.ChargerStatus));
       // What the mount itself was told at initialization, as ScopeStatusFragment.
@@ -248,15 +259,15 @@ function applyStatus(k, f) {
       updateFilesStatus();
       break;
     case "Camera/GetCaptureParameters":
-      camera.params = `${f.Exposure ?? "?"} s, ISO ${f.ISO ?? "?"}${cameraExtra(f)}`;
-      set("#st-camera", `${camera.params}${camera.mode}`);
-      break;
-    case "LiveStream/GetEnableManual":
-      camera.mode = f.IsManual ? ", manual live view" : ", automatic";
-      set("#st-camera", `${camera.params}${camera.mode}`);
+      set("#st-ctemp", celsius(f.Temperature));
+      set("#st-cooler", f.PowerLevel == null ? "–" : `${Math.round(f.PowerLevel * 100)}%`); // a cooled camera's
       break;
     case "Environment/GetStatus":
-      set("#st-env", envText(f));
+      set("#st-cputemp", celsius(f.CpuTemperature));
+      set("#st-ambient", celsius(f.AmbientTemperature));
+      set("#st-dewpoint", celsius(f.DewPoint));
+      set("#st-humidity", f.Humidity == null ? "–" : `${f.Humidity.toFixed(0)}%`);
+      set("#st-otatemp", celsius(f.FrontCellTemperature)); // the telescope's front cell
       break;
     case "DewHeater/GetStatus":
       set("#st-dew", dewText(f));
@@ -282,7 +293,13 @@ export function show() {
   const f = frames[shownKind];
   $("#frame").hidden = !f;
   $("#frame-empty").hidden = !!f;
-  if (!f) { $("#frame-info").textContent = ""; return; }
+  if (!f) {
+    $("#frame-info").textContent = "";
+    pixels = null;
+    noPixel();
+    dash("st-size", "st-type", "st-min", "st-max", "st-mean", "st-std");
+    return;
+  }
   const src = `/frame/${shownKind}?${f.Seq}`; // the query defeats the cache
   if ($("#frame").getAttribute("src") !== src) $("#frame").src = src;
   const i = f.Info;
@@ -413,6 +430,7 @@ function applyZoom(v) {
   Object.assign(zoom, v);
   $("#frame").style.transform = zoom.z === 1 ? "" : `translate(${zoom.x}px, ${zoom.y}px) scale(${zoom.z})`;
   $("#frame").classList.toggle("zoomed", zoom.z > 1);
+  $("#zoom-label").textContent = `${+zoom.z.toFixed(1)}×`;
   if (reframe.on) placeCrosshair();
 }
 // at is the pointer's place from the image's untranslated top left.
@@ -441,6 +459,41 @@ $("#frame").onpointermove = (e) => {
 };
 $("#frame").onpointerup = $("#frame").onpointercancel = () => (zoom.drag = null);
 $("#frame").ondragstart = (e) => e.preventDefault();
+// The strip's − and + zoom about the middle of the view, as the web client's.
+for (const [id, f] of [["#zoom-in", 1.5], ["#zoom-out", 1 / 1.5]]) {
+  $(id).onclick = () => {
+    if ($("#frame").hidden) return;
+    const b = $(".frame-box").getBoundingClientRect(), r = $("#frame").getBoundingClientRect();
+    applyZoom(zoomAt(zoom, b.left + b.width / 2 - (r.left - zoom.x), b.top + b.height / 2 - (r.top - zoom.y), f));
+  };
+}
+// The strip's pixel readout and statistics, read from the shown frame.
+let pixels = null; // the frame's ImageData
+const dash = (...ids) => ids.forEach((id) => ($(`#${id}`).textContent = "—"));
+const noPixel = () => dash("px-x", "px-y", "px-r", "px-g", "px-b");
+$("#frame").addEventListener("load", () => {
+  const img = $("#frame"), w = img.naturalWidth, h = img.naturalHeight;
+  const c = Object.assign(document.createElement("canvas"), { width: w, height: h });
+  const ctx = c.getContext("2d", { willReadFrequently: true });
+  ctx.drawImage(img, 0, 0);
+  pixels = ctx.getImageData(0, 0, w, h);
+  const s = imageStats(pixels.data);
+  $("#st-size").textContent = `${w} x ${h}`;
+  $("#st-type").textContent = "RGB8"; // frames are shown as 8-bit colour JPEG or PNG
+  $("#st-min").textContent = s.min;
+  $("#st-max").textContent = s.max;
+  $("#st-mean").textContent = s.mean.toFixed(1);
+  $("#st-std").textContent = s.stdev.toFixed(1);
+});
+$("#frame").addEventListener("mousemove", (e) => {
+  if (!pixels) return;
+  const r = $("#frame").getBoundingClientRect();
+  const x = Math.floor(((e.clientX - r.left) / r.width) * pixels.width), y = Math.floor(((e.clientY - r.top) / r.height) * pixels.height);
+  if (x < 0 || y < 0 || x >= pixels.width || y >= pixels.height) return noPixel();
+  const i = (y * pixels.width + x) * 4;
+  for (const [id, v] of [["px-x", x], ["px-y", y], ["px-r", pixels.data[i]], ["px-g", pixels.data[i + 1]], ["px-b", pixels.data[i + 2]]]) $(`#${id}`).textContent = v;
+});
+$("#frame").addEventListener("mouseleave", noPixel);
 window.addEventListener("resize", () => reframe.on && placeCrosshair());
 $("#center-here").onclick = async () => {
   const { x, y } = reframe;
@@ -568,7 +621,7 @@ $("#cancel-imaging").onclick = async () => {
 // must not overtake the slew.
 const motion = serial();
 export async function slew(alt, azm) {
-  const r = rateSpeed(Number($("#rate").value));
+  const r = Number($("#rate").value); // the Origin's rate, 1–9
   slewing = true;
   await motion(() => act("Slew", alt * r, azm * r));
 }
@@ -623,7 +676,7 @@ document.addEventListener("keyup", (e) => ARROWS[e.key] && stopSlew());
 // ---------- targets ----------
 
 export let rows = [];    // control.Row from Targets, with search keys
-let pos = [];     // alt, az interleaved from Positions; empty without a location
+export let pos = []; // alt, az interleaved from Positions; empty without a location
 export let shown = [];   // indices into rows, filtered and sorted
 export let selected = -1;
 let sort = { col: "alt", dir: -1 };
@@ -642,7 +695,34 @@ async function loadCatalog() {
 async function refreshPositions() {
   pos = (await act("Positions", $("#catalog").value)) || [];
   refilter();
+  showTarget();
 }
+// showTarget fills the Target tab's object and its place now, as the web
+// client's; "–" for typed coordinates.
+function showTarget() {
+  const r = rows[selected] ?? {}, a = selected >= 0 ? alt(selected) : NaN, z = selected >= 0 && pos.length ? pos[2 * selected + 1] : NaN;
+  const set = (id, v) => ($(id).textContent = v ?? "–");
+  set("#tg-name", r.Description || undefined);
+  set("#tg-id", r.Name);
+  set("#tg-type", r.Type);
+  set("#tg-size", known(r.Size) != null ? `${known(r.Size).toFixed(1)}′` : undefined);
+  set("#tg-mag", known(r.Mag)?.toFixed(1));
+  set("#tg-con", r.Constellation);
+  set("#tg-alt", Number.isNaN(a) ? undefined : `${a.toFixed(1)}°`);
+  set("#tg-az", Number.isNaN(z) ? undefined : `${z.toFixed(1)}°`);
+  showVisibility(r);
+}
+// showVisibility fills the Target tab's rise, transit and set today, as the
+// web client's; a target that never sets or never rises says so in each.
+async function showVisibility(r) {
+  const ids = ["#tg-rise", "#tg-transit", "#tg-set"];
+  const v = r.RA != null && locationKnown() ? await act("Visibility", r.RA, r.Dec) : null;
+  const fmt = (s) => clock(zoneClock(s), (settings.TimeFormat || "24h").replace(/s$/, ""));
+  ids.forEach((id, i) => ($(id).textContent = !v ? "–" : v.Circumpolar ? "Does not set" : v.NeverRises ? "Does Not Rise"
+    : eventTime([v.Rise, v.Transit, v.Set][i], fmt)));
+  $("#schedule-target").disabled = selected < 0 || !!v?.NeverRises;
+}
+const locationKnown = () => settings.LatDeg != null && (settings.LatDeg !== 0 || settings.LonDeg !== 0);
 function refilter() {
   shown = view(rows, pos, $("#search").value, $("#above").checked, sort);
   $("#count").textContent = `${shown.length} of ${rows.length}`;
@@ -682,6 +762,7 @@ export function select(i) {
   $("#ra").value = dms(r.RA / 15, true).replace(/[h′″]/g, "");
   $("#dec").value = dms(r.Dec, false).replace(/[°′″+]/g, "").replace("−", "-");
   $("#selected").textContent = `${r.Name} — ${r.Description || r.Type} (${r.Catalog})`;
+  showTarget();
   updateTargetButtons();
   renderRows();
   showPane("cp-target"); // the chosen target's controls, as the web client's Target tab
@@ -732,6 +813,7 @@ for (const id of ["#ra", "#dec"]) {
     if (selected >= 0) act("SetSelection", "", "");
     selected = -1;
     $("#selected").textContent = "Typed coordinates";
+    showTarget();
     updateTargetButtons();
     renderRows();
   };
@@ -876,7 +958,7 @@ $("#open-tonight").onclick = async () => {
   fill("#tonight-moon", r.moon);
   $("#tonight-moon-phase").textContent = c.MoonPhase;
   $("#tonight-moon-text").textContent = c.MoonText;
-  $("#tonight-dialog").showModal();
+  openInTab($("#tonight-dialog"));
 };
 
 $("#open-about").onclick = async () => {
@@ -896,9 +978,12 @@ export async function start() {
   const total = cats.reduce((n, c) => n + c.Count, 0);
   $("#catalog").replaceChildren(new Option(`All catalogs (${total})`, ""), ...cats.map((c) => new Option(`${c.Name} (${c.Count})`, c.Name)));
   $("#catalog").value = settings.Catalog ?? "Messier";
-  $("#rate").value = String(settings.SlewRate || 4);
-  // The app remembers the rate (EquipmentSettings.setScopeMotionRate).
-  $("#rate").onchange = () => { settings.SlewRate = Number($("#rate").value); act("SaveSettings", settings); };
+  showPrefs();
+  // The web client's 1–9 rate slider, remembered (as the app remembers its rate).
+  $("#rate").value = String(settings.SlewSpeed || 9);
+  $("#rate-val").textContent = $("#rate").value;
+  $("#rate").oninput = () => ($("#rate-val").textContent = $("#rate").value);
+  $("#rate").onchange = () => { settings.SlewSpeed = Number($("#rate").value); act("SaveSettings", settings); };
   setConnected(false, "", "");
   applyActivity((await act("Activity")) || { Text: "No Connection", Progress: -1, Image: "" });
   await loadCatalog();
@@ -929,4 +1014,5 @@ async function showAnnouncement() {
 
 // Modules read the shared state through live imports; they write it here.
 export function setSettings(s) { settings = s; }
+export const isIdle = () => lastTask.State === "IDLE";
 export function setLastOrigin(o) { lastOrigin = o; }

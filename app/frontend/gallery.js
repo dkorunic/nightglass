@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // The gallery and the image editor (PhotoGalleryFragment, ImageAdjustmentsFragment).
-import { $, $$, act, choice, confirmBox, toast } from "./ui.js";
+import { $, $$, act, choice, confirmBox, openInTab, toast } from "./ui.js";
 import { CROP_RATIOS, adjustPixels, calendar, clock, cropRect, dms, latLon, offsetIn, prepare, shareExposure, sliderEdit, view } from "./targets.js";
 import { settings } from "./app.js";
 
@@ -199,7 +199,7 @@ $("#open-gallery").onclick = () => {
   Object.assign(gallery, { tab: "all", select: false });
   gallery.chosen.clear();
   loadGallery();
-  $("#gallery-dialog").showModal();
+  openInTab($("#gallery-dialog"));
 };
 for (const t of TABS) $(`#gallery-${t}`).onclick = () => { gallery.tab = t; renderGallery(); };
 // Select and Cancel Selection toggle at once (toggleSelectMode).

@@ -97,11 +97,15 @@ type ImageReady struct {
 // and the sensor (firmware 1.5.6286 keys; sizes as float64 so a "3840.0"
 // still decodes) for the field before a frame reports one.
 type CameraInfo struct {
-	DefaultIso, MinIso, MaxIso    int
-	MinExposure, MaxExposure      float64
-	MaxImageWidth, MaxImageHeight float64
-	PixelSize                     float64 // µm
-	HasCooling                    bool    // a TEC camera (Origin-585C-TEC): Camera/SetCooling
+	// What the web client's Camera tab lists.
+	CameraModel, CameraID, FirmwareVersion, SdkVersion string
+	DefaultIso, MinIso, MaxIso                         int
+	MinExposure, MaxExposure                           float64
+	MaxImageWidth, MaxImageHeight                      float64
+	PixelSize                                          float64 // µm
+	MaxBinning                                         int
+	HasCooling                                         bool // a TEC camera (Origin-585C-TEC): Camera/SetCooling
+	IsColor                                            bool // false: a mono camera, without white balance or RGB depths
 }
 
 // MountConfig is Mount/GetMountConfig.

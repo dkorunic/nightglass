@@ -70,11 +70,17 @@ func (m *sim) mosaicMsg(cmd string, req, r fake.Msg) bool {
 		r["AvailableMosaics"] = list
 	case "TaskController/GetObservingListInfo":
 		m.mu.Lock()
+		mo := m.mosaics[fmt.Sprint(req["ListUuid"])]
 		status := "UNKNOWN"
-		if mo := m.mosaics[fmt.Sprint(req["ListUuid"])]; mo != nil && mo.status == "COMPLETED" {
+		if mo != nil && mo.status == "COMPLETED" {
 			status = "FINISHED"
 		}
 		m.mu.Unlock()
+		if mo == nil { // neither a mosaic nor an observing list (listMsg)
+			r["ErrorCode"], r["ErrorMessage"] = -3, fmt.Sprintf("Unknown ListUuid %v", req["ListUuid"]) // INVALID_DATA
+
+			break
+		}
 		r["ImagingInfo"] = fake.Msg{"ListUuid": req["ListUuid"], "ListStatus": status}
 	case "Mosaic/GetMosaicTiles":
 		m.mu.Lock()

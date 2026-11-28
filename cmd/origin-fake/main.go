@@ -38,6 +38,7 @@ func main() {
 	elpanel := flag.Bool("elpanel", false, "report a connected flat panel (ElPanel)")
 	dewheater := flag.Bool("dewheater", true, "report a dew heater (off: DewHeater answers DEW_HEATER_NO_RESPONSE, an assumption)")
 	cooled := flag.Bool("cooled", false, "simulate a cooled camera (Origin-585C-TEC): HasCooling and Camera/SetCooling")
+	optics := flag.Bool("optics", false, "answer the Optics module with configurable optics (a real Origin refuses it)")
 	survey := flag.String("sky", "", "HiPS survey for frames via CDS hips2fits, e.g. CDS/P/DSS2/color, or legacy:ls-dr10 via the Legacy Survey viewer; a comma-separated list uses the first covering each field, e.g. CDS/P/PanSTARRS/DR1/color-z-zg-g,CDS/P/DSS2/color (empty: procedural stars)")
 	flag.Parse()
 	if l := strings.Split(*survey, ","); slices.ContainsFunc(l[:len(l)-1], func(s string) bool { return strings.HasPrefix(s, "legacy:") }) {
@@ -62,6 +63,9 @@ func main() {
 	if *cooled {
 		s.SetInfo("Camera/GetCameraInfo", fake.Msg{"HasCooling": true})
 		s.SetInfo("Camera/GetCooling", fake.Msg{"CoolingEnabled": false, "TemperatureTarget": 10.0})
+	}
+	if *optics {
+		s.SetAbsent("Optics", 0, "")
 	}
 	s.PingInterval = *ping
 	fmt.Printf("fake Origin at %s (connect the app to this address)\n", s.Host())
@@ -185,6 +189,9 @@ type sim struct {
 	copying    context.CancelFunc // a USB copy in progress, nil when none
 	halt       context.CancelFunc // a task HaltTasks ends, nil when none
 	mosaics    map[string]*simMosaic
+	lists      map[string]*obsList // observing lists, by Uuid
+	wifi       *wifi
+	optics     fake.Msg            // Optics/GetConfiguration
 	fields     map[string]fake.Sky // the field each kept master shows, by Uuid
 	grids      map[string][2]int   // a composition\'s tile grid, by its Uuid
 	mount      *mount
@@ -193,6 +200,7 @@ type sim struct {
 	uuid       string             // the running run
 	name       string             // its object name
 	survey     string             // HiPS survey frames are cut from, "" for procedural stars
+	videos     []string           // CaptureVideo folders
 	rebootTime time.Duration      // how long a reboot keeps the fake down
 	seed       atomic.Uint64      // noise seeds, one per frame
 	stackIv    time.Duration
@@ -202,8 +210,16 @@ type sim struct {
 }
 
 func newSim(s *fake.Server, stackIv time.Duration) *sim {
-	m := &sim{s: s, stackIv: stackIv, kept: map[string]string{}, step: 500 * time.Millisecond, mosaics: map[string]*simMosaic{}, fields: map[string]fake.Sky{}, grids: map[string][2]int{}}
+	m := &sim{
+		s: s, stackIv: stackIv, kept: map[string]string{}, step: 500 * time.Millisecond, mosaics: map[string]*simMosaic{},
+		fields: map[string]fake.Sky{}, grids: map[string][2]int{}, lists: map[string]*obsList{},
+	}
 	m.mount = newMount(s, 51.48, 0, time.Now) // Greenwich until RunInitialize says where
+	s.SetInfo("Camera/GetCameraInfo", cameraInfo)
+	s.SetInfo("LiveStream/GetDisableLiveStream", fake.Msg{"IsDisabled": false})
+	m.mu.Lock()
+	m.resetSettings()
+	m.mu.Unlock()
 	s.Handle = m.handle
 
 	return m
@@ -221,7 +237,7 @@ func (m *sim) handle(req fake.Msg) fake.Msg {
 
 		return r
 	}
-	if m.mosaicMsg(key, req, r) {
+	if m.listMsg(key, req, r) || m.mosaicMsg(key, req, r) || m.networkMsg(key, req, r) || m.opticsMsg(key, req, r) || m.cameraMsg(key, req, r) {
 		return r
 	}
 	switch key {
@@ -277,11 +293,12 @@ func (m *sim) handle(req fake.Msg) fake.Msg {
 	case "Mount/EnableTracking":
 		on, _ := req["Value"].(bool)
 		m.mount.setTracking(on)
-	case "Camera/SetCaptureParameters":
-		// Reported back by the Camera status, as an Origin does.
-		m.setStatus("Camera", req, "Exposure", "ISO", "Binning", "Offset", "ColorRBalance", "ColorGBalance", "ColorBBalance")
-		m.s.NotifyStatus("Camera")
 	case "System/Reboot":
+		go m.powerCycle(true)
+	case "System/RunFactoryReset":
+		m.mu.Lock()
+		m.resetSettings()
+		m.mu.Unlock()
 		go m.powerCycle(true)
 	case "System/PowerDownOrigin":
 		go m.powerCycle(false)
@@ -387,6 +404,9 @@ func (m *sim) handle(req fake.Msg) fake.Msg {
 		for uuid, name := range m.kept {
 			dirs = append(dirs, dirName(uuid, name))
 		}
+		for _, v := range m.videos {
+			dirs = append(dirs, v)
+		}
 		m.mu.Unlock()
 		r["DirectoryList"] = dirs
 	case "ImageServer/GetStackedMasterFromDirectory":
@@ -401,9 +421,13 @@ func (m *sim) handle(req fake.Msg) fake.Msg {
 			delete(m.kept, uuid)
 			m.mu.Unlock()
 		}
+		m.mu.Lock()
+		m.videos = slices.DeleteFunc(m.videos, func(v string) bool { return v == req["DirectoryName"] })
+		m.mu.Unlock()
 	case "ImageServer/DeleteAllImageDirectories":
 		m.mu.Lock()
 		clear(m.kept)
+		m.videos = nil
 		m.mu.Unlock()
 	case "System/GetLogs":
 		// The Origin bundles its logs, reporting progress, then names the file.
@@ -632,7 +656,7 @@ func startsTask(key string) bool {
 
 	return dest == "TaskController" && cmd != "PolarAlign" &&
 		(strings.HasPrefix(cmd, "Run") || cmd == "CalibrateFocuser" || cmd == "ZipDirectory" ||
-			strings.HasPrefix(cmd, "Copy") || strings.HasPrefix(cmd, "Recapture") || cmd == "ResumeImagingList")
+			strings.HasPrefix(cmd, "Copy") || strings.HasPrefix(cmd, "Recapture") || cmd == "ResumeImagingList" || cmd == "CaptureVideo")
 }
 
 // progressTask runs state reporting info.pct from 0 to 100 % over d (in
@@ -766,6 +790,9 @@ func (m *sim) liveFeed(ctx context.Context, iv time.Duration) {
 		case <-ctx.Done():
 			return
 		case <-t.C:
+			if m.liveDisabled() {
+				continue
+			}
 			f := m.skyHere(liveW, liveH, 1)
 			loc := m.tempFile()
 			m.s.SetFile(loc, f.JPEG())
@@ -857,6 +884,13 @@ func (m *sim) powerCycle(reboot bool) {
 	log.Printf("rebooting: back in %v", m.rebootTime)
 	time.Sleep(m.rebootTime)
 	m.s.SetDown(false)
+}
+
+// resetSettings sets what a factory reset restores (m.mu held): the
+// Wi-Fi with its known networks, and the optics.
+func (m *sim) resetSettings() {
+	m.wifi, m.optics = newWifi(), defaultOptics()
+	m.s.SetStatus("Network", m.wifi.status())
 }
 
 // elPanel drives a connected flat panel (the GIOTTO flat generator); one

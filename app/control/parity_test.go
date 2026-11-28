@@ -346,7 +346,7 @@ func TestNewSettingsDefaultsAndValidation(t *testing.T) {
 	d := DefaultSettings()
 	if d.ManualImaging || d.Snapshot || d.ExposureSec != 10 || d.ISO != 1000 || d.SnapshotExposureSec != 10 ||
 		d.SlewLimitMinDeg != 0 || !d.SaveRaw || !d.StopOnPlateSolveFail || d.Dither || d.DitherDistance != 10 ||
-		d.DitherInterval != 5 || d.SlewRate != 4 || !d.Cooling || d.CoolingTargetC != 10 {
+		d.DitherInterval != 5 || d.SlewSpeed != 9 || !d.Cooling || d.CoolingTargetC != 10 {
 		t.Errorf("defaults %+v differ from the web client's", d)
 	}
 	for _, s := range []Settings{{SlewLimitMinDeg: -1}, {SlewLimitMinDeg: 90}, {SnapshotExposureSec: -1}, {DitherDistance: -1}} {

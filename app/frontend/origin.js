@@ -3,8 +3,10 @@
 
 // Origin settings (SettingsOriginAdvancedFragment): lighting, fans, autofocus,
 // dew heater, calibration frames, logs, version and updates, polar alignment.
+// Their controls sit in the control panes where Celestron's web client keeps
+// them, each joined to #origin-form by its form attribute.
 import { Browser, Events } from "/wails/runtime.js";
-import { $, act, sliderLabels, choice, confirmBox, showAlert } from "./ui.js";
+import { $, act, sliderLabels, choice, confirmBox, showAlert, showPane } from "./ui.js";
 import { activityText, connected, lastOrigin, lastTask, lastTransfer, lastUpdate, locationOK, setLastOrigin, settings } from "./app.js";
 import { darkMessage, polarOffset, polarText, updateButton, updateText } from "./targets.js";
 
@@ -40,8 +42,6 @@ async function renderOrigin(cached = false) {
   show(f.giottolevel, o.ElPanelLevel ?? null, o.ElPanelConnected && o.ElPanelOn && o.Known && o.Idle);
   show(f.finalformat, o.FinalFormat || null, !!o.FinalFormat && o.Idle);
   $("#cooling-section").hidden = !o.HasCooling;
-  f.cooling.checked = !!settings.Cooling;
-  f.coolingtarget.value = settings.CoolingTargetC;
   $("#recalibrate").disabled = !(o.Recalibrating === false && o.Idle);
   $("#recalibrate").textContent = o.Recalibrating ? "Recalibration in Progress…" : "Recalibrate Environment Sensor";
   $("#polar-align").disabled = !(o.Idle && o.OnWedge);
@@ -60,14 +60,22 @@ async function renderOrigin(cached = false) {
   f.channel.replaceChildren(...[...new Set([...updates.Channels, o.Channel])].map((c) => new Option(c, c)));
   show(f.channel, o.Channel, o.Idle);
   $("#demo-mode").disabled = !o.Known;
+  showPrefs();
+  showLogsButton();
+  $("#info-app").textContent = `Nightglass, ver ${(await act("AppVersion")) || "?"}`;
+  sliderLabels($("#origin-form"));
+}
+// showPrefs shows Nightglass's own preferences among the Origin's settings:
+// they need no Origin, so they show from the start.
+export function showPrefs() {
+  const f = $("#origin-form").elements;
+  f.cooling.checked = !!settings.Cooling;
+  f.coolingtarget.value = settings.CoolingTargetC;
   f.mosaicflatten.checked = !!settings.MosaicFlatten;
   f.autocrop.checked = !!settings.AutoCrop;
   f.postprocess.checked = !!settings.PostProcess;
   f.mosaicnormalize.checked = !!settings.MosaicNormalize;
   f.mosaicequalize.checked = !!settings.MosaicEqualize;
-  showLogsButton();
-  $("#info-app").textContent = `Nightglass, ver ${(await act("AppVersion")) || "?"}`;
-  sliderLabels($("#origin-form"));
 }
 // "Check Again" is the app's pull to refresh: asks the Origin again (the
 // settings' HasUpdateAvailable, without ForceCheck), or connects first.
@@ -75,15 +83,15 @@ $("#check-updates").onclick = async () => {
   if (connected) return renderOrigin();
   if (await locationOK()) act("ConnectOrigin");
 };
-// originStatus redraws the open settings as the Origin's statuses arrive
+// originStatus redraws the settings as the Origin's statuses arrive
 // (updateAllSections on TaskController and Environment statuses and on the
 // settings' answers), at most every half second.
 let originRedraw = 0;
 const originKeys = new Set(["TaskController/GetStatus", "Environment/GetStatus", "DewHeater/GetStatus", "ElPanel/GetStatus",
   "Mount/GetMountConfig", "LedRing/GetBrightnessLevel", "LampController/GetBrightnessLevel", "Focuser/GetFocuserAdvancedSettings"]);
 export function originStatus(key) {
-  if (!originKeys.has(key) || !$("#origin-dialog").open || originRedraw) return;
-  originRedraw = setTimeout(() => { originRedraw = 0; if ($("#origin-dialog").open) renderOrigin(true); }, 500);
+  if (!originKeys.has(key) || !connected || originRedraw) return;
+  originRedraw = setTimeout(() => { originRedraw = 0; if (connected) renderOrigin(true); }, 500);
 }
 // The calibration buttons say what is running, as the app's do.
 export function showCalibrationButtons() {
@@ -98,7 +106,8 @@ export function showCalibrationButtons() {
 }
 // change runs a setter, then shows what the Origin now reports.
 const change = async (method, ...args) => { await act(method, ...args); renderOrigin(); };
-$("#origin-form").addEventListener("input", () => sliderLabels($("#origin-form")));
+// The controls are outside the form, so their input events reach it only here.
+document.addEventListener("input", (e) => e.target.form?.id === "origin-form" && sliderLabels($("#origin-form")));
 {
   const f = $("#origin-form").elements;
   f.wedge.onchange = () => change("SetWedge", f.wedge.checked);
@@ -138,14 +147,18 @@ $("#origin-form").addEventListener("input", () => sliderLabels($("#origin-form")
 $("#reinit").onclick = async () => {
   if (!(await confirmBox("Re-Initialize Telescope?", "Are you sure you want to re-initialize the telescope now? This can take several minutes.",
     "Re-Initialize Now"))) return;
-  $("#origin-dialog").close();
   act("Reinitialize");
 };
 $("#reboot").onclick = async () => {
   if (!(await confirmBox("Reboot Origin?",
     "Origin will restart; Nightglass reconnects once it is back up (a few minutes).", "Reboot"))) return;
-  $("#origin-dialog").close();
   act("Reboot");
+};
+// Factory Reset, as the web client's: its settings back to the factory's,
+// then it restarts and Nightglass reconnects.
+$("#factory-reset").onclick = async () => {
+  if (await confirmBox("Factory Reset",
+    "Reset all Origin settings to factory defaults? Origin will reboot afterwards.", "Reset")) act("FactoryReset");
 };
 $("#power-off").onclick = async () => {
   // Refused before asking, as the app's powerOffScopeNowButtonTapped.
@@ -157,8 +170,9 @@ $("#recalibrate").onclick = async () => {
   if (await confirmBox("Recalibrate Environment Sensor Now?",
     "Are you sure you want to recalibrate the environment sensor now?", "Recalibrate Now")) change("RecalibrateEnvironmentSensor");
 };
-$("#open-origin").onclick = async () => {
-  // The dark frame fields start from the app's defaults.
+// originConnected fills the settings once connected, as the app's settings
+// screen does on opening; the dark frame fields start from its defaults.
+export async function originConnected() {
   const f = $("#origin-form").elements, d = (await act("DarkDefaults")) || { ISO: 200, ExposureSec: 10, Count: 10 };
   const isos = (await act("SupportedISOs")) || [];
   f.darkiso.replaceChildren(...isos.map((v) => new Option(String(v), String(v))));
@@ -166,9 +180,12 @@ $("#open-origin").onclick = async () => {
   f.darkexp.value = d.ExposureSec.toFixed(1);
   f.darkcount.value = d.Count;
   await renderOrigin();
-  $("#origin-dialog").showModal();
+}
+// The Origin's settings and versions: the System tab, asked afresh.
+$("#open-origin").onclick = () => {
+  showPane("cp-system");
+  if (connected) renderOrigin();
 };
-$("#origin-dialog").addEventListener("close", () => setLastOrigin(null));
 
 // Z: dark and flat frames.
 {
@@ -246,7 +263,6 @@ $("#update-origin").onclick = async () => {
   if ((await act("UpdateOrigin")) !== false) renderOrigin();
 };
 Events.On("update", async () => {
-  $("#origin-dialog").close();
   if (await choice("Origin Update Available",
     "A newer version of the software that runs your Origin telescope is available. Would you like to update now?",
     ["Show Updates", "Cancel"]) === 0) $("#open-origin").click();
@@ -271,10 +287,7 @@ async function startPolarAlign(now = false) {
 }
 $("#polar-align").onclick = async () => {
   if (await confirmBox("Polar Align Telescope?",
-    "Are you sure you want to polar align the telescope now? This can take several minutes.", "Polar Align Now")) {
-    $("#origin-dialog").close();
-    startPolarAlign();
-  }
+    "Are you sure you want to polar align the telescope now? This can take several minutes.", "Polar Align Now")) startPolarAlign();
 };
 Events.On("polar", () => $("#polar-rec-dialog").showModal());
 $("#polar-rec-run").onclick = () => { $("#polar-rec-dialog").close(); startPolarAlign(true); };
