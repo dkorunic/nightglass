@@ -8,154 +8,209 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <header>
-    <h1>Nightglass</h1>
-    <span id="conn" class="badge off">Not connected</span>
-    <span class="grow"></span>
-    <button id="open-connect">Connect…</button>
-    <button id="open-settings">Settings</button>
-    <button id="open-origin">Origin</button>
-    <button id="open-files" class="needs-conn">Files</button>
-    <button id="open-gallery">Gallery</button>
-    <button id="open-mosaics">Mosaics</button>
-    <button id="open-tonight">Tonight</button>
-    <button id="open-about">About</button>
-    <button id="night-toggle" title="Night mode (N)">Night</button>
-  </header>
-  <div id="banner" hidden>Connection lost — reconnecting…</div>
-
-  <main>
-    <section id="viewer">
-      <nav class="tabs">
+  <!-- The layout follows Celestron's own Origin web client (firmware 1.5.6286):
+       a status bar, a control panel with vertical tabs, a main panel with
+       horizontal tabs. The markup and styles are Nightglass's own. -->
+  <header id="statusbar">
+    <div class="brand">Nightglass</div>
+    <span id="conn" class="badge off" title="Connection (click to reconnect)">Not connected</span>
+    <div class="sep"></div>
+    <button id="initialize" class="btn-primary" hidden></button>
+    <button id="finish-imaging" class="needs-conn btn-primary" disabled>Finish imaging</button>
+    <button id="cancel-imaging" class="needs-conn btn-danger" disabled>Cancel imaging</button>
+    <div class="sep"></div>
+    <div class="statusbar-info">
+      <div class="statusbar-task">
         <p id="activity">No Connection</p>
+        <progress id="progress" max="1" hidden></progress>
+      </div>
+      <div class="statusbar-sub">
         <span id="target-name" hidden></span>
         <span id="manual-mode" hidden></span>
         <span id="warning" hidden></span>
-        <span class="grow"></span>
-        <button id="filter" class="needs-conn">Clear Filter</button>
-        <button id="reframe" class="needs-conn">Reframe</button>
-        <button id="center-here" hidden>Center Here</button>
-        <button id="snapshot-save" hidden>Save</button>
-        <button id="snapshot-delete" hidden>Delete</button>
-        <button id="save-shown" disabled>Save frame</button>
-        <button id="save-final" disabled>Save final image again</button>
+      </div>
+    </div>
+    <nav class="statusbar-menu">
+      <button id="open-connect" class="btn-ghost">Connect…</button>
+      <button id="open-settings" class="btn-ghost">Settings</button>
+      <button id="open-origin" class="btn-ghost">Origin</button>
+      <button id="open-files" class="needs-conn btn-ghost">Files</button>
+      <button id="open-gallery" class="btn-ghost">Gallery</button>
+      <button id="open-mosaics" class="btn-ghost">Mosaics</button>
+      <button id="open-tonight" class="btn-ghost">Tonight</button>
+      <button id="open-about" class="btn-ghost">About</button>
+      <button id="theme-toggle" class="btn-ghost" title="Light or dark theme">Light</button>
+      <button id="night-toggle" class="btn-ghost" title="Night mode (N)">Night</button>
+    </nav>
+  </header>
+  <div id="banner" hidden>Connection lost — reconnecting…</div>
+
+  <main id="lower">
+    <div id="ctrl-panel">
+      <nav id="ctrl-tabs" class="tabstrip vertical" role="tablist" aria-label="Controls">
+        <button class="tab active" role="tab" data-pane="cp-status">Status</button>
+        <button class="tab" role="tab" data-pane="cp-mount">Mount</button>
+        <button class="tab" role="tab" data-pane="cp-focuser">Focuser</button>
+        <button class="tab" role="tab" data-pane="cp-target">Target</button>
       </nav>
-      <progress id="progress" max="1" hidden></progress>
-      <div class="frame-box">
-        <img id="frame" alt="">
-        <div id="crosshair" hidden></div>
-        <p id="frame-empty">No image yet</p>
-        <!-- The app's progress box over the final image (updateFinalMasterHUDPhase). -->
-        <p id="final-box" hidden></p>
-      </div>
-      <p id="frame-info"></p>
-      <div class="row">
-        <label><span id="strength-label">Strength (0.50)</span>
-          <input id="stretch-strength" type="range" disabled min="0" max="100" value="50"></label>
-        <label><span id="background-label">Background (0.50)</span>
-          <input id="stretch-background" type="range" disabled min="0" max="100" value="50"></label>
-      </div>
-    </section>
+      <div id="ctrl-content">
+        <section id="cp-status" class="pane active" role="tabpanel">
+          <h2 class="pane-heading">Status</h2>
+          <div class="section">
+            <dl id="status">
+              <dt>Task</dt><dd id="st-task">-</dd>
+              <dt>Alignment</dt><dd id="st-aligned">-</dd>
+              <dt>RA (J2000)</dt><dd id="st-ra">-</dd>
+              <dt>Dec. (J2000)</dt><dd id="st-dec">-</dd>
+              <dt>Altitude</dt><dd id="st-alt">-</dd>
+              <dt>Azimuth</dt><dd id="st-az">-</dd>
+              <dt>Battery</dt><dd id="st-battery">-</dd>
+              <dt>Charger</dt><dd id="st-charger">-</dd>
+              <dt>Focuser Position</dt><dd id="st-focus">-</dd>
+              <dt>Camera</dt><dd id="st-camera">-</dd>
+              <dt>Weather</dt><dd id="st-env">-</dd>
+              <dt>Dew heater</dt><dd id="st-dew">-</dd>
+              <dt>Free Disk Space</dt><dd id="st-disk">-</dd>
+              <dt>Autoguider</dt><dd id="st-guider">-</dd>
+            </dl>
+          </div>
+          <details id="more-status" class="section">
+            <summary class="section-title">More status</summary>
+            <dl id="status-more">
+              <dt>Latitude</dt><dd id="st-lat">-</dd>
+              <dt>Longitude</dt><dd id="st-lon">-</dd>
+              <dt>Date</dt><dd id="st-date">-</dd>
+              <dt>Time</dt><dd id="st-time">-</dd>
+              <dt>Timezone</dt><dd id="st-tz">-</dd>
+              <dt>Encoder Azimuth</dt><dd id="st-enc-az">-</dd>
+              <dt>Encoder Altitude</dt><dd id="st-enc-alt">-</dd>
+              <dt>Address</dt><dd id="st-host">-</dd>
+              <dt>Download</dt><dd id="st-speed">-</dd>
+            </dl>
+          </details>
+        </section>
 
-    <aside id="side">
-      <h2>Status</h2>
-      <dl id="status">
-        <dt>Task</dt><dd id="st-task">-</dd>
-        <dt>Alignment</dt><dd id="st-aligned">-</dd>
-        <dt>RA (J2000)</dt><dd id="st-ra">-</dd>
-        <dt>Dec. (J2000)</dt><dd id="st-dec">-</dd>
-        <dt>Altitude</dt><dd id="st-alt">-</dd>
-        <dt>Azimuth</dt><dd id="st-az">-</dd>
-        <dt>Battery</dt><dd id="st-battery">-</dd>
-        <dt>Charger</dt><dd id="st-charger">-</dd>
-        <dt>Focuser Position</dt><dd id="st-focus">-</dd>
-        <dt>Camera</dt><dd id="st-camera">-</dd>
-        <dt>Weather</dt><dd id="st-env">-</dd>
-        <dt>Dew heater</dt><dd id="st-dew">-</dd>
-        <dt>Free Disk Space</dt><dd id="st-disk">-</dd>
-        <dt>Autoguider</dt><dd id="st-guider">-</dd>
-      </dl>
-      <details id="more-status">
-        <summary>More status</summary>
-        <dl id="status-more">
-          <dt>Latitude</dt><dd id="st-lat">-</dd>
-          <dt>Longitude</dt><dd id="st-lon">-</dd>
-          <dt>Date</dt><dd id="st-date">-</dd>
-          <dt>Time</dt><dd id="st-time">-</dd>
-          <dt>Timezone</dt><dd id="st-tz">-</dd>
-          <dt>Encoder Azimuth</dt><dd id="st-enc-az">-</dd>
-          <dt>Encoder Altitude</dt><dd id="st-enc-alt">-</dd>
-          <dt>Address</dt><dd id="st-host">-</dd>
-          <dt>Download</dt><dd id="st-speed">-</dd>
-        </dl>
-      </details>
+        <section id="cp-mount" class="pane" role="tabpanel">
+          <h2 class="pane-heading">Mount</h2>
+          <div class="section">
+            <div class="section-title">Telescope</div>
+            <div class="row"><button id="halt" class="needs-conn btn-danger">Halt all tasks</button></div>
+          </div>
+          <div class="section">
+            <div class="section-title">Slew <small>(arrow keys)</small></div>
+            <div class="pad">
+              <span></span><button class="needs-conn" data-alt="1" data-azm="0">▲</button><span></span>
+              <button class="needs-conn" data-alt="0" data-azm="-1">◀</button>
+              <button class="needs-conn btn-danger" id="slew-stop">■</button>
+              <button class="needs-conn" data-alt="0" data-azm="1">▶</button>
+              <span></span><button class="needs-conn" data-alt="-1" data-azm="0">▼</button><span></span>
+            </div>
+            <label class="field">Rate
+              <select id="rate"><option>1</option><option>2</option><option selected>3</option><option>4</option></select>
+            </label>
+          </div>
+        </section>
 
-      <h2>Telescope</h2>
-      <div class="row">
-        <button id="initialize" hidden></button>
-      </div>
-      <div class="row">
-        <button id="halt" class="needs-conn">Halt all tasks</button>
-      </div>
+        <section id="cp-focuser" class="pane" role="tabpanel">
+          <h2 class="pane-heading">Focuser</h2>
+          <div class="section">
+            <div class="section-title"><span id="focus-label">Focuser Position</span></div>
+            <p><button id="focus-value" class="needs-conn focus-ctl value-btn" title="Set the focuser position">–</button></p>
+            <div class="row">
+              <button class="needs-conn focus-ctl" data-step="-2">−100</button>
+              <button class="needs-conn focus-ctl" data-step="-1">−10</button>
+              <button class="needs-conn focus-ctl" data-step="-3" title="One step (- key; Shift: rough)">−1</button>
+              <button class="needs-conn focus-ctl" data-step="3" title="One step (+ key; Shift: rough)">+1</button>
+              <button class="needs-conn focus-ctl" data-step="1">+10</button>
+              <button class="needs-conn focus-ctl" data-step="2">+100</button>
+            </div>
+            <!-- Hold to run the focuser (Focuser/Move, Celestron's web app's Move In/Out). -->
+            <div class="row">
+              <button class="needs-conn focus-ctl" data-jog="2" title="Hold to move the focuser in">Hold: In</button>
+              <button class="needs-conn focus-ctl" data-jog="-2" title="Hold to move the focuser out">Hold: Out</button>
+            </div>
+          </div>
+          <div class="section">
+            <div class="section-title">Autofocus</div>
+            <div class="row"><button class="needs-conn focus-ctl btn-primary" id="autofocus">Auto</button></div>
+          </div>
+        </section>
 
-      <h2>Slew <small>(arrow keys)</small></h2>
-      <div class="pad">
-        <span></span><button class="needs-conn" data-alt="1" data-azm="0">▲</button><span></span>
-        <button class="needs-conn" data-alt="0" data-azm="-1">◀</button>
-        <button class="needs-conn" id="slew-stop">■</button>
-        <button class="needs-conn" data-alt="0" data-azm="1">▶</button>
-        <span></span><button class="needs-conn" data-alt="-1" data-azm="0">▼</button><span></span>
+        <section id="cp-target" class="pane" role="tabpanel">
+          <h2 class="pane-heading">Target</h2>
+          <div class="section">
+            <div class="section-title">Selected</div>
+            <p id="selected">No target selected</p>
+            <label class="field">RA <input id="ra" placeholder="RA h m s" size="12"></label>
+            <label class="field">Dec <input id="dec" placeholder="Dec ° ′ ″" size="12"></label>
+          </div>
+          <div class="section">
+            <div class="section-title">Actions</div>
+            <div class="row">
+              <button id="goto" class="needs-conn btn-primary" disabled>Go to</button>
+              <button id="image" class="needs-conn btn-primary" disabled>Image</button>
+              <button id="mosaic" class="needs-conn" disabled title="Image a larger area as tiles, composed on the Origin">Mosaic…</button>
+            </div>
+            <label class="field" title="The Origin ends the run itself after this long; empty: until Finish">Stop after (min)
+              <input id="duration" type="number" min="0" step="1" size="4" placeholder="–"></label>
+          </div>
+        </section>
       </div>
-      <label>Rate:
-        <select id="rate"><option>1</option><option>2</option><option selected>3</option><option>4</option></select>
-      </label>
+    </div>
 
-      <h2>Focus</h2>
-      <p><span id="focus-label">Focuser Position</span>:
-        <button id="focus-value" class="needs-conn focus-ctl" title="Set the focuser position">–</button></p>
-      <div class="row">
-        <button class="needs-conn focus-ctl" data-step="-2">−100</button>
-        <button class="needs-conn focus-ctl" data-step="-1">−10</button>
-        <button class="needs-conn focus-ctl" data-step="-3" title="One step (- key; Shift: rough)">−1</button>
-        <button class="needs-conn focus-ctl" data-step="3" title="One step (+ key; Shift: rough)">+1</button>
-        <button class="needs-conn focus-ctl" data-step="1">+10</button>
-        <button class="needs-conn focus-ctl" data-step="2">+100</button>
-        <button class="needs-conn focus-ctl" id="autofocus">Auto</button>
-      </div>
-      <!-- Hold to run the focuser (Focuser/Move, Celestron's web app's Move In/Out). -->
-      <div class="row">
-        <button class="needs-conn focus-ctl" data-jog="2" title="Hold to move the focuser in">Hold: In</button>
-        <button class="needs-conn focus-ctl" data-jog="-2" title="Hold to move the focuser out">Hold: Out</button>
-      </div>
-    </aside>
+    <div id="main-panel">
+      <nav id="main-tabs" class="tabstrip" role="tablist" aria-label="Views">
+        <button class="tab active" role="tab" data-pane="mp-liveview">Live View</button>
+        <button class="tab" role="tab" data-pane="mp-targets">Targets</button>
+      </nav>
+      <div id="main-content">
+        <section id="mp-liveview" class="pane active" role="tabpanel">
+          <div id="viewer">
+            <div class="toolbar">
+              <button id="filter" class="needs-conn">Clear Filter</button>
+              <button id="reframe" class="needs-conn">Reframe</button>
+              <button id="center-here" class="btn-primary" hidden>Center Here</button>
+              <button id="snapshot-save" hidden>Save</button>
+              <button id="snapshot-delete" class="btn-danger" hidden>Delete</button>
+              <span class="grow"></span>
+              <button id="save-shown" disabled>Save frame</button>
+              <button id="save-final" disabled>Save final image again</button>
+            </div>
+            <div class="frame-box">
+              <img id="frame" alt="">
+              <div id="crosshair" hidden></div>
+              <p id="frame-empty">No image yet</p>
+              <!-- The app's progress box over the final image (updateFinalMasterHUDPhase). -->
+              <p id="final-box" hidden></p>
+            </div>
+            <div class="lv-controls">
+              <p id="frame-info"></p>
+              <label><span id="strength-label">Strength (0.50)</span>
+                <input id="stretch-strength" type="range" disabled min="0" max="100" value="50"></label>
+              <label><span id="background-label">Background (0.50)</span>
+                <input id="stretch-background" type="range" disabled min="0" max="100" value="50"></label>
+            </div>
+          </div>
+        </section>
 
-    <section id="targets">
-      <div class="row">
-        <select id="catalog"></select>
-        <input id="search" type="search" placeholder="Search name, NGC/IC, common name, type">
-        <label><input type="checkbox" id="above"> Above horizon only</label>
-        <span id="count" class="grow"></span>
+        <section id="mp-targets" class="pane" role="tabpanel">
+          <div id="targets">
+            <div class="toolbar">
+              <select id="catalog"></select>
+              <input id="search" type="search" placeholder="Search name, NGC/IC, common name, type">
+              <label class="check"><input type="checkbox" id="above"> Above horizon only</label>
+              <span id="count" class="grow"></span>
+            </div>
+            <div class="thead">
+              <span data-sort="Name">Name</span><span data-sort="Description">Description</span>
+              <span data-sort="Type">Type</span><span data-sort="Mag">Mag</span><span data-sort="Size">Size ′</span>
+              <span data-sort="Constellation">Constellation</span><span data-sort="alt">Alt °</span><span data-sort="az">Az °</span>
+            </div>
+            <div id="rows"><div id="spacer"><div id="window"></div></div></div>
+          </div>
+        </section>
       </div>
-      <div class="row">
-        <span id="selected">No target selected</span>
-        <span class="grow"></span>
-        <input id="ra" placeholder="RA h m s" size="12">
-        <input id="dec" placeholder="Dec ° ′ ″" size="12">
-        <button id="goto" class="needs-conn" disabled>Go to</button>
-        <button id="image" class="needs-conn" disabled>Image</button>
-        <button id="mosaic" class="needs-conn" disabled title="Image a larger area as tiles, composed on the Origin">Mosaic…</button>
-        <label title="The Origin ends the run itself after this long; empty: until Finish">Stop after
-          <input id="duration" type="number" min="0" step="1" size="4" placeholder="–"> min</label>
-        <button id="finish-imaging" class="needs-conn" disabled>Finish imaging</button>
-        <button id="cancel-imaging" class="needs-conn" disabled>Cancel imaging</button>
-      </div>
-      <div class="thead">
-        <span data-sort="Name">Name</span><span data-sort="Description">Description</span>
-        <span data-sort="Type">Type</span><span data-sort="Mag">Mag</span><span data-sort="Size">Size ′</span>
-        <span data-sort="Constellation">Constellation</span><span data-sort="alt">Alt °</span><span data-sort="az">Az °</span>
-      </div>
-      <div id="rows"><div id="spacer"><div id="window"></div></div></div>
-    </section>
+    </div>
   </main>
 
   <dialog id="connect-dialog">

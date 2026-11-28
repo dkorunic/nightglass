@@ -3,7 +3,7 @@
 
 // Nightglass frontend. Every call goes to app/control.App through Wails.
 import { Browser, Events } from "/wails/runtime.js";
-import { sliderLabels, $, $$, act, call, choice, confirmBox, showAlert, toast } from "./ui.js";
+import { sliderLabels, $, $$, act, call, choice, confirmBox, showAlert, showPane, toast } from "./ui.js";
 import {
   composeButton, mosaicAction, mosaicDetail, mosaicSize, tileStatus,
   adjustPixels, angle, batteryPercent, batteryTemp, cameraExtra, calendar, clock, batteryText, cameraLocks, canCancel, canFinish, captureLabel, chargerText, cropRect, CROP_RATIOS, darkMessage, dewText, dms, envText, fileStatus, filterLabel, focusSteps, freeSpace, gotoMode, guiderText,
@@ -680,6 +680,7 @@ export function select(i) {
   $("#selected").textContent = `${r.Name} — ${r.Description || r.Type} (${r.Catalog})`;
   updateTargetButtons();
   renderRows();
+  showPane("cp-target"); // the chosen target's controls, as the web client's Target tab
 }
 // Go to needs a selected row above the lowest go-to altitude (typed
 // coordinates are checked by Go). Image images where the telescope points
@@ -711,6 +712,7 @@ $("#goto").onclick = async () => {
   updateRunButtons();
 };
 $("#image").onclick = async () => {
+  showPane("mp-liveview");
   const r = selected >= 0 && !settings.Snapshot ? rows[selected] : null;
   const minutes = Number($("#duration").value) || 0; // a timed run, or until Finish
   if ((await act("Image", { Catalog: r?.Catalog ?? "", Name: r?.Name ?? "", DurationMin: minutes })) === false || settings.Snapshot) return;
@@ -731,6 +733,9 @@ for (const id of ["#ra", "#dec"]) {
   };
 }
 $("#rows").onscroll = renderRows;
+// The table draws only its visible rows: again when its size changes (a
+// window resize, or its tab shown after being hidden at size 0).
+new ResizeObserver(() => renderRows()).observe($("#rows"));
 $("#search").oninput = () => { $("#rows").scrollTop = 0; refilter(); };
 $("#above").onchange = refilter;
 $("#catalog").onchange = loadCatalog;

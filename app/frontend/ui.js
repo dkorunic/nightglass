@@ -116,3 +116,46 @@ export function sliderLabels(form) {
     if (el) sp.textContent = `${el.value}${sp.hasAttribute("data-pct") ? "%" : ""}`;
   }
 }
+
+// stored reads (value undefined) or writes a per-browser convenience such as
+// the last tab or the theme; storage may be unavailable, which costs only that.
+function stored(key, value) {
+  try {
+    if (value === undefined) return localStorage.getItem(key);
+    localStorage.setItem(key, value);
+  } catch {
+    // no storage: the defaults stand
+  }
+  return null;
+}
+
+// Tabs, as in Celestron's Origin web client: each .tabstrip's buttons show
+// their pane (data-pane) and hide the strip's others.
+export function showPane(id) {
+  const tab = document.querySelector(`.tabstrip .tab[data-pane="${id}"]`);
+  if (!tab) return;
+  const strip = tab.closest(".tabstrip");
+  for (const b of strip.querySelectorAll(".tab")) {
+    const on = b === tab;
+    b.classList.toggle("active", on);
+    b.setAttribute("aria-selected", String(on));
+    document.getElementById(b.dataset.pane).classList.toggle("active", on);
+  }
+  stored(`tab:${strip.id}`, id);
+}
+for (const strip of $$(".tabstrip")) {
+  const tabs = [...strip.querySelectorAll(".tab")];
+  for (const t of tabs) t.onclick = () => showPane(t.dataset.pane);
+  const saved = stored(`tab:${strip.id}`);
+  showPane(tabs.some((t) => t.dataset.pane === saved) ? saved : tabs[0].dataset.pane);
+}
+
+// Light and dark themes, as the web client offers; dark by default, the
+// night sky's (Night mode reddens either).
+function setTheme(t) {
+  document.documentElement.dataset.theme = t;
+  $("#theme-toggle").textContent = t === "dark" ? "Light" : "Dark";
+  stored("theme", t);
+}
+setTheme(stored("theme") === "light" ? "light" : "dark");
+$("#theme-toggle").onclick = () => setTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark");
